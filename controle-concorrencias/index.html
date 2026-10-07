@@ -1586,6 +1586,8 @@ ${eap.txt}`;
   }
 
   // Devolve, para cada cotação, os documentos ligados (certos) e as sugestões, com o motivo
+  // documentos citados na cotação ("ADITIVO CT165", "PC 1022")
+  const citaDoc = (c) => [...fold(`${c.desc} ${c.obs || ""}`).matchAll(/\b(CT|PC)\s*[\/\-.]?\s*(\d{3,4})\b/g)].map((m) => m[1] === "CT" ? "CT/" + m[2] : "PC " + m[2]);
   function matchAll(cotList, docs, elos) {
     const fixedList = elos?.links || [];   // [{ doc, cot, parte? }]: um documento pode estar em mais de uma cotação
     const rej = elos?.rej || {};            // docId -> [cotId, ...]
@@ -1665,7 +1667,8 @@ ${eap.txt}`;
       const dataOk = x.dd != null && x.dd <= JANELA;
       const unicoNaData = dataOk && sz(okCot, ck(x)) === 1 && sz(okDoc, x.d.id) === 1;
       const valorForte = Math.round(x.a.v * 100) % 100 !== 0 || x.a.v >= 5000;
-      const contraFornecedor = (x.c.qc?.vencedores || []).length && !x.comum.length;
+      const cita = citaDoc(x.c), outroDoc = cita.length && !cita.includes(x.d.id);
+      const contraFornecedor = ((x.c.qc?.vencedores || []).length && !x.comum.length) || outroDoc;
       // Certo só com valor exato no campo principal, sem fornecedor contrário ao QC, e:
       //  único em valor (e valor não redondo/baixo, ou data compatível), ou o único com data compatível
       const certo = x.exato && x.princ && !contraFornecedor && !mexida.has(x.c.id) && ((unico && (valorForte || dataOk)) || unicoNaData);
@@ -1673,7 +1676,7 @@ ${eap.txt}`;
       const r = res.get(x.c.id);
       if (certo) r.certos.push({ doc: x.d, por: x.por + (unico ? " · único possível" : " · único com data compatível"), auto: true });
       else {
-        const motivo = !x.exato ? "" : !x.princ ? " · bateu só com o valor entregue/medido" : contraFornecedor ? " · fornecedor diferente do vencedor do QC"
+        const motivo = !x.exato ? "" : !x.princ ? " · bateu só com o valor entregue/medido" : outroDoc ? ` · a cotação cita ${cita.join(", ")}` : contraFornecedor ? " · fornecedor diferente do vencedor do QC"
           : mexida.has(x.c.id) ? " · você descartou outro documento nesta cotação: confirme" : !unico ? " · há outros documentos ou cotações com o mesmo valor" : " · valor redondo e baixo, e a data não confirma";
         r.sugestoes.push({ doc: x.d, por: x.por + motivo, score: x.score });
       }
@@ -1839,6 +1842,12 @@ ${eap.txt}`;
       ` <span class="hint">(${lbl2} <span class="num">${fmt(d.sec)}</span>)</span> <span class="pill ${sitCls(d.sit)}">${esc(d.sit)}</span>` +
       (semEntrega(d) ? ` <span class="pill s-DIVERGENCIA">nada ${lbl2}</span>` : saldoCanc(d) > 0.009 ? ` <span class="hint neg">saldo cancelado ${fmt(saldoCanc(d))}</span>` : "");
   }
+  // documento dividido entre cotações: quanto as cotações somam e quanto do documento sobra sem cotação
+  function partesTxt(d) {
+    const ls = (S.elos?.links || []).filter((l) => l.doc === d.id && l.parte != null);
+    const t = Math.round(ls.reduce((a, l) => a + l.parte, 0) * 100) / 100, dif = Math.round((d.prim - t) * 100) / 100;
+    return ` · ${ls.length} cotações somam ${fmt(t)}` + (Math.abs(dif) < 0.01 ? " (fecha com o documento)" : dif > 0 ? ` <span class="neg">· ${fmt(dif)} do documento sem cotação</span>` : ` <span class="neg">· passam ${fmt(-dif)} do documento</span>`);
+  }
   const faltaTxt = (r) => r.faltaPartes?.length ? `<div class="hint neg">Vários vencedores: falta o pedido da parte ${r.faltaPartes.map(fmt).join(" e ")}</div>` : "";
   // Bloco que aparece nos detalhes da cotação
   function elosDetail(x) {
@@ -1869,6 +1878,15 @@ ${eap.txt}`;
     e.links.push({ doc: docId, cot: cotId, em: new Date().toISOString(), ...(opt.parte != null ? { parte: opt.parte } : {}) });
     // documento dividido: quem já estava nele sem parte passa a contar só o aprovado da sua cotação
     if (opt.keep && opt.parte != null) for (const l of e.links) if (l.doc === docId && l.parte == null && S.cot.get(l.cot)?.valor > 0) l.parte = S.cot.get(l.cot).valor;
+  }
+  // Vincular à mão um documento que já está em outra cotação: ele fica nas duas, cada uma com o seu aprovado
+  // (ex.: CT/142 = terraplanagem + aditivos)
+  function linkKeep(e, docId, cotId) {
+    const outras = [...elosAll().res.entries()].filter(([cid, r]) => cid !== cotId && r.certos.some((x) => x.doc.id === docId)).map(([cid]) => cid);
+    if (!outras.length) { elosLink(e, docId, cotId); return `${docId} vinculado à cotação ${S.cot.get(cotId)?.num}.`; }
+    for (const cid of outras) if (!e.links.some((l) => l.doc === docId && l.cot === cid)) e.links.push({ doc: docId, cot: cid, em: new Date().toISOString(), parte: S.cot.get(cid)?.valor || 0 });
+    elosLink(e, docId, cotId, { keep: true, parte: S.cot.get(cotId)?.valor || 0 });
+    return `${docId} agora está nas cotações ${[...outras, cotId].map((c) => S.cot.get(c)?.num).join(", ")}, cada uma com o seu valor aprovado.`;
   }
   function docIdFrom(v) { const m = String(v).toUpperCase().match(/^\s*(PC\s*\d+|CT\s*\/\s*\d+)/); return m ? m[1].replace(/^PC\s*/, "PC ").replace(/\s*\/\s*/, "/") : ""; }
 
@@ -1917,13 +1935,13 @@ ${eap.txt}`;
     if (act === "add") {
       const id = docIdFrom($("lk-doc-" + cot)?.value || "");
       if (!id || !elosAll().docs.some((d) => d.id === id)) { msg.className = "msg err"; msg.textContent = "Escolha um pedido ou contrato da lista (ex.: PC 1211 ou CT/150)."; return; }
-      elosLink(e, id, cot); return saveElos(e, msg, `${id} vinculado.`);
+      return saveElos(e, msg, linkKeep(e, id, cot));
     }
     if (act === "doc2cot") {
       const v = $("lk-cot-" + doc.replace(/\W/g, "_"))?.value || "";
       const hit = [...S.cot.entries()].find(([, c]) => key(c.num) === key(v));
       if (!hit) { msg.className = "msg err"; msg.textContent = `Não existe cotação nº ${v}.`; return; }
-      elosLink(e, doc, hit[0]); return saveElos(e, msg, `${doc} vinculado à cotação ${hit[1].num}.`);
+      return saveElos(e, msg, linkKeep(e, doc, hit[0]));
     }
     if (act === "just") {
       const obs = ($("just-obs-" + cot)?.value || "").trim();
@@ -2043,7 +2061,7 @@ ${eap.txt}`;
       const rows = L.ok.filter((r) => hitC(r.c) || r.r.certos.some((e) => hitD(e.doc)));
       h = tbl(["Cotação", "Aprovado", "Pedido / contrato", "Diferença p/ efetivo"], rows.map((r) => {
         const soma = r.r.certos.reduce((t, e) => t + (e.parte != null ? e.parte : efetivo(e.doc)), 0), dif = Math.round(((r.c.valor || 0) - soma) * 100) / 100;
-        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.r.certos.map((e) => `<div>${docLine(e.doc)}${e.parte != null ? ` <span class="hint">· desta cotação: <b class="num">${fmt(e.parte)}</b></span>` : ""} <span class="hint">· ${esc(e.manual ? "confirmado por você" : "automático")}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(r.c.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("")}${faltaTxt(r.r)}</td>` +
+        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.r.certos.map((e) => `<div>${docLine(e.doc)}${e.parte != null ? ` <span class="hint">· desta cotação: <b class="num">${fmt(e.parte)}</b>${partesTxt(e.doc)}</span>` : ""} <span class="hint">· ${esc(e.manual ? "confirmado por você" : "automático")}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(r.c.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("")}${faltaTxt(r.r)}</td>` +
           `<td class="r num${dif ? " neg" : ""}">${dif ? fmt(dif) : "—"}</td></tr>`; }), "Nenhuma cotação ligada ainda.");
     }
     box.innerHTML = h;
