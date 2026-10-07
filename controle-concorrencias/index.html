@@ -794,15 +794,41 @@ dl.kv dd { margin: 0; }
 
   // ---------- QC em PDF ----------
   // O worker do pdf.js roda na própria página (carregado pela tag de script), sem Worker separado.
+  // Cor de fundo de cada texto: média dos pixels claros (o texto em si é escuro) ao redor dele
+  function cellColors(cv, items, pageH, scale) {
+    const ctx = cv.getContext("2d");
+    const data = ctx.getImageData(0, 0, cv.width, cv.height).data;
+    const out = [];
+    for (const it of items) {
+      const x0 = Math.max(0, Math.floor((it.x - 1) * scale)), x1 = Math.min(cv.width - 1, Math.ceil((it.x + it.w + 1) * scale));
+      const y0 = Math.max(0, Math.floor((pageH - it.y - it.fs) * scale)), y1 = Math.min(cv.height - 1, Math.ceil((pageH - it.y + it.fs * 0.3) * scale));
+      let r = 0, g = 0, b = 0, n = 0;
+      const step = Math.max(1, Math.floor(scale / 2));
+      for (let y = y0; y <= y1; y += step) for (let x = x0; x <= x1; x += step) {
+        const i = (y * cv.width + x) * 4, R = data[i], G = data[i + 1], B = data[i + 2];
+        if (R + G + B < 330) continue;
+        r += R; g += G; b += B; n++;
+      }
+      if (n < 4) continue;
+      r /= n; g /= n; b /= n;
+      let cor = null;
+      if (g > r + 25 && g > b + 25) cor = "VERDE";
+      else if (r > 200 && g > 140 && b < 120) cor = r - g > 50 ? "LARANJA" : "AMARELO";
+      else if (r > 200 && g < 150 && b < 150) cor = "VERMELHO";
+      if (cor) out.push({ cor, s: it.s.trim(), x: Math.round(it.x + it.w / 2), y: Math.round(it.y) });
+    }
+    return out;
+  }
+
   async function readPdf(file) {
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-    const pages = [], images = [];
+    const pages = [], images = [], colors = [], posInfo = [];
     for (let p = 1; p <= Math.min(pdf.numPages, 2); p++) {
       const page = await pdf.getPage(p);
       const base = page.getViewport({ scale: 1 });
       const tc = await page.getTextContent();
       // Linhas: agrupa por altura, separa colunas distantes com " | "
-      const items = tc.items.filter((it) => it.str && it.str.trim()).map((it) => ({ s: it.str, x: it.transform[4], y: it.transform[5], w: it.width }));
+      const items = tc.items.filter((it) => it.str && it.str.trim()).map((it) => ({ s: it.str, x: it.transform[4], y: it.transform[5], w: it.width, fs: Math.hypot(it.transform[2], it.transform[3]) || 8 }));
       const lines = new Map();
       for (const it of items) { const k = Math.round(it.y / 3); (lines.get(k) || lines.set(k, []).get(k)).push(it); }
       const txt = [...lines.entries()].sort((a, b) => b[0] - a[0]).map(([, l]) => {
@@ -811,6 +837,8 @@ dl.kv dd { margin: 0; }
         return out;
       }).join("\n");
       pages.push(txt);
+      const keyRows = [...lines.values()].filter((l) => l.some((it) => /FORNECEDOR|^TOTA(L|IS)|RESULTADO|VENCEDOR/i.test(it.s.trim())));
+      posInfo.push(...keyRows.map((l) => l.map((it) => `${it.s.trim()} [x=${Math.round(it.x + it.w / 2)}]`).join(" | ")));
       // Imagem: só a área com conteúdo, em alta resolução, mais as duas metades
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
       for (const it of items) { x0 = Math.min(x0, it.x); x1 = Math.max(x1, it.x + it.w); y0 = Math.min(y0, it.y); y1 = Math.max(y1, it.y + 12); }
@@ -819,6 +847,7 @@ dl.kv dd { margin: 0; }
       const vp = page.getViewport({ scale });
       const cv = document.createElement("canvas"); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
       await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+      colors.push(...cellColors(cv, items, base.height, scale));
       const pad = 10 * scale;
       const cx = Math.max(0, x0 * scale - pad), cw = Math.min(cv.width, x1 * scale + pad) - cx;
       const cy = Math.max(0, (base.height - y1) * scale - pad), ch = Math.min(cv.height, (base.height - y0) * scale + pad) - cy;
@@ -831,10 +860,10 @@ dl.kv dd { margin: 0; }
       images.push(await crop(cx, cw));
       if (p === 1) { images.push(await crop(cx, cw * 0.55)); images.push(await crop(cx + cw * 0.45, cw * 0.55)); }
     }
-    return { text: pages.join("\n\n--- página ---\n\n").slice(0, 60000), images };
+    return { text: pages.join("\n\n--- página ---\n\n").slice(0, 60000), images, colors, posInfo };
   }
 
-  const QC_PROMPT = (name, text) => `Você está lendo um Quadro de Concorrência (QC) de compras de uma obra. Preciso do número da cotação, da descrição, de quem venceu e do valor aprovado.
+  const QC_PROMPT = (name, text, colors, posInfo, hasImages) => `Você está lendo um Quadro de Concorrência (QC) de compras de uma obra. Preciso do número da cotação, da descrição, de quem venceu e do valor aprovado.
 
 Existem dois modelos de QC:
 - Modelo A: há uma linha "RESULTADO" e a palavra "VENCEDOR" (célula verde) aparece em cima da coluna do fornecedor vencedor. O valor é o TOTAL dessa coluna.
@@ -842,13 +871,20 @@ Existem dois modelos de QC:
 Ignore colunas de referência como "MENORES VALORES", "MIN.", "UNIT. MIN.", "TOTAL MIN." e "REFERÊNCIA ORÇAMENTO": não são fornecedores.
 Se houver mais de um vencedor (por exemplo itens divididos entre fornecedores, com células verdes em itens diferentes), liste todos; o total aprovado é a SOMA do que cada vencedor levou.
 O número e a descrição costumam estar em "SOLICITAÇÃO: 493 - LOUÇAS" ou "COTAÇÃO: 480 - DISJUNTORES", ou no nome do arquivo.
-As imagens são o QC inteiro e depois as metades esquerda e direita ampliadas. Use as imagens para ver as cores e o texto abaixo para os números exatos.
+${hasImages ? "As imagens são o QC inteiro e depois as metades esquerda e direita ampliadas. Use as imagens para ver as cores e o texto abaixo para os números exatos." : "Não há imagens: use a lista de CORES DETECTADAS abaixo, que foi medida automaticamente nos pixels do PDF."}
+Na lista de cores, cada texto tem a posição horizontal x do seu centro. Para saber de qual fornecedor é uma célula colorida, compare o x dela com o x dos nomes dos fornecedores nas LINHAS-CHAVE (o fornecedor com x mais próximo).
 Se algo estiver ambíguo (nenhuma marcação verde, marcação em mais de um lugar sem ficar claro, valores que não batem), explique em "duvida". Se estiver claro, "duvida" é null.
 
 Responda só com JSON neste formato (números com ponto decimal):
 {"numero":"493","descricao":"LOUÇAS","vencedores":[{"fornecedor":"ICASA","valor":39735.00,"como_identificou":"VENCEDOR em cima da coluna"}],"total":39735.00,"duvida":null}
 
 Nome do arquivo: ${name}
+
+CORES DETECTADAS (texto com fundo colorido; textos em fundo branco ou cinza não aparecem):
+${colors.length ? colors.map((c) => `${c.cor}: "${c.s}" [x=${c.x}, y=${c.y}]`).join("\n") : "nenhuma"}
+
+LINHAS-CHAVE com posição x de cada texto:
+${posInfo.join("\n") || "nenhuma"}
 
 Texto extraído do PDF (colunas separadas por " | "):
 ${text}`;
@@ -872,15 +908,15 @@ ${text}`;
     renderQc(`<div class="qc-card"><span>Lendo o PDF…</span></div>`);
     try {
       if (!window.pdfjsLib) throw { code: "pdf" };
-      const { text, images } = await readPdf(f);
+      const { text, images, colors, posInfo } = await readPdf(f);
       const lim = await sample.limits().catch(() => null);
       const max = lim?.images?.maxCount ?? 0;
       renderQc(`<div class="qc-card"><span>O Claude está analisando o QC… (pode levar até 1 minuto)</span><button class="btn" type="button" id="qc-stop">Parar</button></div>`);
-      const r = await sample.json(QC_PROMPT(f.name, text), { images: max ? images.slice(0, max) : undefined, signal: ctl.signal });
+      const r = await sample.json(QC_PROMPT(f.name, text, colors.slice(0, 200), posInfo.slice(0, 20), max > 0), { images: max ? images.slice(0, max) : undefined, signal: ctl.signal });
       const venc = Array.isArray(r?.vencedores) ? r.vencedores.map((v) => ({ fornecedor: String(v.fornecedor ?? ""), valor: Number(v.valor) || 0, como: String(v.como_identificou ?? "") })) : [];
       const soma = Math.round(venc.reduce((t, v) => t + v.valor, 0) * 100) / 100;
       const total = Number(r?.total);
-      qcResult = { numero: String(r?.numero ?? "").trim(), descricao: String(r?.descricao ?? "").trim(), venc, total: venc.length ? soma : (isFinite(total) ? total : null), duvida: r?.duvida ? String(r.duvida) : null, arquivo: f.name };
+      qcResult = { numero: String(r?.numero ?? "").trim(), descricao: String(r?.descricao ?? "").trim(), venc, total: venc.length ? soma : null, duvida: r?.duvida ? String(r.duvida) : null, arquivo: f.name };
       if (venc.length && isFinite(total) && Math.abs(total - soma) > 0.05 && !qcResult.duvida)
         qcResult.duvida = `O total informado (${fmt(total)}) não bate com a soma dos vencedores (${fmt(soma)}). Usei a soma.`;
       const ex = [...S.cot.values()].find((c) => key(c.num) === key(qcResult.numero));
