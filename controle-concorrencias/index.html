@@ -1798,7 +1798,14 @@ ${eap.txt}`;
     const act = b.dataset.el, cot = b.dataset.cot, doc = b.dataset.doc;
     const msg = $("el-msg-" + cot) || $("ped-msg");
     const e = curElos();
-    if (act === "ok") { elosLink(e, doc, cot); return saveElos(e, msg, `${doc} vinculado.`); }
+    if (act === "ok") {
+      const antes = { links: [...e.links], rej: [...e.rej] };
+      elosLink(e, doc, cot); await saveElos(e, msg, "");
+      const m2 = $("ped-msg"); m2.className = "msg"; S.undoOk = antes;
+      m2.innerHTML = `${esc(doc)} vinculado à cotação ${esc(S.cot.get(cot)?.num ?? "")}. <button class="btn" type="button" data-el="undook">Desfazer</button>`;
+      return;
+    }
+    if (act === "undook" && S.undoOk) { const u = S.undoOk; S.undoOk = null; e.links = u.links; e.rej = u.rej; return saveElos(e, $("ped-msg"), "Confirmação desfeita."); }
     if (act === "errado") {
       e.errados = e.errados.filter((x) => x.doc !== doc); e.links = e.links.filter((l) => l.doc !== doc);
       e.errados.push({ doc, cot: cot || null, em: new Date().toISOString() });
@@ -1835,11 +1842,6 @@ ${eap.txt}`;
       return saveElos(e, msg, `Marcado: ${JUST[b.dataset.motivo]}.`);
     }
     if (act === "unjust") { e.just = e.just.filter((j) => j.cot !== cot); return saveElos(e, msg, "Marcação desfeita."); }
-    if (act === "all") {
-      const lista = pedLists().sug;
-      for (const r of lista) elosLink(e, r.s[0].doc.id, r.c.id);
-      return saveElos(e, msg, `${lista.length} sugestões confirmadas.`);
-    }
   }, true);
 
   // ---- aba Pedidos e contratos ----
@@ -1892,7 +1894,7 @@ ${eap.txt}`;
     let h = "";
     if (S.pedF === "sug") {
       const rows = L.sug.filter((r) => hitC(r.c) || r.s.some((s) => hitD(s.doc)));
-      h = rows.length ? `<div class="row" style="margin-bottom:8px"><button class="btn" type="button" data-el="all">Confirmar a 1ª sugestão de todas (${L.sug.length})</button><span class="hint">Revise antes: cada linha mostra o motivo.</span></div>` : "";
+      h = rows.length ? `<p class="hint" style="margin:0 0 8px">Confirme uma a uma: cada sugestão mostra o motivo.</p>` : "";
       const descart = (S.elos?.rej || []).map((l) => ({ ...l, c: S.cot.get(l.cot), d: elosAll().docs.find((d) => d.id === l.doc) })).filter((l) => l.c);
       const descHtml = descart.length ? `<h2 style="margin:14px 0 8px">Descartados por você (${descart.length})</h2>` + tbl(["Cotação", "Aprovado", "Documento descartado", ""], descart.map((l) =>
         `<tr><td><b class="num">${esc(l.c.num)}</b> ${esc(l.c.desc)}</td><td class="r num">${fmt(l.c.valor)}</td><td>${l.d ? docLine(l.d) : esc(l.doc)}</td>` +
