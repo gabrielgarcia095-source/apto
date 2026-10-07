@@ -1815,10 +1815,16 @@ ${eap.txt}`;
               if (cents(g[i].prim) + cents(g[j].prim) + cents(g[k].prim) === alvo && perto([g[i], g[j], g[k]])) combos.push([g[i], g[j], g[k]]);
           }
         }
+        // vários vencedores de fornecedores diferentes: 2 pedidos do mesmo dia (até 3 dias) que somam o aprovado
+        if (!r.certos.length && !combos.length) {
+          const livres = [...grupos.values()].flat().filter((d) => !isRej(d, c) && !pegos.has(d.id) && cents(d.prim) < alvo);
+          for (let i = 0; i < livres.length; i++) for (let j = i + 1; j < livres.length; j++)
+            if (fk(livres[i].forn) !== fk(livres[j].forn) && cents(livres[i].prim) + cents(livres[j].prim) === alvo && Math.abs(parseDate(livres[i].data) - parseDate(livres[j].data)) / DAY <= 3) combos.push([livres[i], livres[j]]);
+        }
         if (combos.length !== 1) continue;
         const ids = combos[0].map((d) => d.id);
         const por = r.certos.length ? `completa a cotação: falta ${fmt(alvo / 100)} = ${ids.join(" + ")} (mesmo fornecedor)`
-          : `soma: ${ids.join(" + ")} = aprovado ${fmt(c.valor)} ao centavo · mesmo fornecedor`;
+          : `soma: ${ids.join(" + ")} = aprovado ${fmt(c.valor)} ao centavo · ${fk(combos[0][0].forn) === fk(combos[0][1].forn) ? "mesmo fornecedor" : "fornecedores diferentes no mesmo dia (vários vencedores)"}`;
         for (const d of combos[0]) { pegos.add(d.id); docTaken.add(d.id); r.sugestoes.push({ doc: d, por, score: 44, soma: !!r.certos.length, parte: d.prim, grupo: ids }); }
       }
     }
@@ -2139,7 +2145,7 @@ ${eap.txt}`;
           (ativo && parado ? ` <b>${esc(ativo.id)}</b> tem ${ativo.tipo === "CT" ? "medição" : "entrega"} e <b>${esc(parado.id)}</b> está sem movimento: provavelmente foi substituído, confira se deve ser cancelado no Sienge.` : "") +
           `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="both" data-doc="${esc(par[0].id)}" data-doc2="${esc(par[1].id)}" data-cot="${esc(r.c.id)}">Confirmar os dois</button></div></div>` : "";
         const gr = r.s.find((x) => x.grupo?.length > 1)?.grupo;
-        const grupoHtml = gr ? `<div class="qc-warn" style="margin-bottom:8px">Compra em ${gr.length} pedidos do mesmo fornecedor: ${esc(gr.join(" + "))} = ${fmt(gr.reduce((t, id) => t + (r.s.find((x) => x.doc.id === id)?.doc.prim || 0), 0))}.` +
+        const grupoHtml = gr ? `<div class="qc-warn" style="margin-bottom:8px">Compra em ${gr.length} pedidos: ${esc(gr.join(" + "))} = ${fmt(gr.reduce((t, id) => t + (r.s.find((x) => x.doc.id === id)?.doc.prim || 0), 0))}.` +
           `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="names" data-docs="${esc(gr.join(","))}" data-cot="${esc(r.c.id)}">Confirmar os ${gr.length}</button></div></div>` : "";
         return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${equipe}${aviso}${grupoHtml}${r.s.map((s, i) => `<div style="margin-bottom:6px">${docLine(s.doc)}<br><span class="hint">${esc(s.por)}</span> ` +
           `<button class="btn${i ? "" : " primary"}" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}"${s.soma ? ` data-keep="1" data-parte="${s.parte}"` : ""}>Confirmar</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Não é este</button>${errBtn(s.doc, r.c.id)}</div>`).join("")}<div class="msg" id="el-msg-${esc(r.c.id)}"></div></td><td></td></tr>`; }), "Nenhuma sugestão pendente.") + descHtml;
