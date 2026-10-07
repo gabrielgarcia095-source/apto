@@ -119,6 +119,7 @@ td.obs { color: var(--muted); font-size: .82rem; max-width: 260px; }
 dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: .86rem; }
 dl.kv dt { color: var(--muted); }
 dl.kv dd { margin: 0; }
+#qc-panel.drop { border-color: var(--accent); background: var(--accent-soft); }
 .qc-card { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 6px; font-size: .86rem; background: var(--bg); }
 .qc-card .big { font-family: var(--font-num); font-size: 1.05rem; }
 .qc-card ul { margin: 0; padding-left: 18px; }
@@ -161,7 +162,8 @@ dl.kv dd { margin: 0; }
     <section class="panel" id="qc-panel" hidden>
       <h2>Ler QC em PDF</h2>
       <p class="hint" style="margin:0">Envie o Quadro de Concorrência. O Claude lê o nº, o vencedor e o valor aprovado. Você confere antes de salvar.</p>
-      <label>Arquivo do QC <input type="file" id="qc-file" accept="application/pdf,.pdf"></label>
+      <label>Arquivo do QC <input type="file" id="qc-file" accept="application/pdf,.pdf">
+        <span class="hint">Ou arraste o PDF para este quadro.</span></label>
       <div id="qc-out" role="status"></div>
     </section>
     <form class="panel" id="form" autocomplete="off">
@@ -900,8 +902,18 @@ ${text}`;
     return "Não consegui ler esse QC agora. Tente de novo.";
   }
 
-  $("qc-file").addEventListener("change", async (ev) => {
-    const f = ev.target.files?.[0]; if (!f) return;
+  $("qc-file").addEventListener("change", (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (f) readQc(f); });
+  // Arrastar o PDF para qualquer parte do painel
+  const qcPanel = $("qc-panel");
+  qcPanel.addEventListener("dragover", (ev) => { ev.preventDefault(); qcPanel.classList.add("drop"); });
+  qcPanel.addEventListener("dragleave", () => qcPanel.classList.remove("drop"));
+  qcPanel.addEventListener("drop", (ev) => {
+    ev.preventDefault(); qcPanel.classList.remove("drop");
+    const f = [...(ev.dataTransfer?.files || [])].find((x) => /pdf$/i.test(x.type) || /\.pdf$/i.test(x.name));
+    if (f) readQc(f); else renderQc(`<div class="qc-card"><span class="msg err">Solte um arquivo PDF.</span></div>`);
+  });
+
+  async function readQc(f) {
     const sample = await claude.use("sample"); if (!sample) return;
     qcCtl?.abort(); qcCtl = new AbortController(); const ctl = qcCtl;
     qcResult = null;
@@ -931,8 +943,8 @@ ${text}`;
     } catch (e) {
       if (e?.code === "cancelled") renderQc("");
       else renderQc(`<div class="qc-card"><span class="msg err">${e?.code === "pdf" ? "O leitor de PDF não carregou. Recarregue a página." : esc(qcErr(e))}</span></div>`);
-    } finally { ev.target.value = ""; }
-  });
+    }
+  }
 
   $("qc-out").addEventListener("click", (ev) => {
     if (ev.target.closest("#qc-stop")) { qcCtl?.abort(); return; }
