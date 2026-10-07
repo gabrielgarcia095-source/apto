@@ -68,17 +68,12 @@ header p { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
 .grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
-/* Coluna do formulário: fica parada ao rolar a lista e rola por dentro quando passa da altura da tela */
-.sticky { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px);
-  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px);
-  overflow-y: auto; overscroll-behavior: contain; padding-bottom: 4px; }
 /* Coluna da lista: mesma altura da tela; só a tabela rola, com o cabeçalho parado */
 .listcol { display: flex; flex-direction: column; gap: 10px; min-width: 0;
   position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px);
   height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px); }
 .listcol .tablebox { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 @media (max-width: 900px) {
-  .sticky { position: static; max-height: none; overflow: visible; }
   .listcol { position: static; height: auto; }
   .listcol .tablebox { overflow-y: visible; }
 }
@@ -170,7 +165,7 @@ dl.kv dd { margin: 0; }
 
   <!-- ABA COTAÇÕES -->
   <section id="view-cot" class="grid">
-    <div class="sticky" style="display:grid; gap:12px; align-content:start; min-width:0">
+    <div class="formcol" style="display:grid; gap:12px; align-content:start; min-width:0">
     <section class="panel" id="qc-panel" hidden>
       <h2>Ler QC em PDF</h2>
       <p class="hint" style="margin:0">Envie o Quadro de Concorrência. O Claude lê o nº, o vencedor e o valor aprovado. Você confere antes de salvar.</p>
