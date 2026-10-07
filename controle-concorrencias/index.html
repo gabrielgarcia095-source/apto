@@ -2095,6 +2095,12 @@ ${eap.txt}`;
     const ord = (a, b) => (a.c.ordem ?? 0) - (b.c.ordem ?? 0);
     return { ok: ok.sort(ord), sug: sug.sort(ord), sem: sem.sort(ord), just: just.sort(ord), canc: canc.sort(ord), livres, errados };
   }
+  // cotação sem pedido com uma nota do financeiro de valor exato (única): provavelmente lançada direto no financeiro
+  function finDica(c) {
+    if (!S.nfMeta || !(c.valor > 0)) return "";
+    const hs = nfAnalise().semDoc.filter((r) => nfTipo(r[2]) !== "GUIA" && Math.abs((r[7] || 0) - c.valor) < 0.005);
+    return hs.length === 1 ? `<div class="hint" style="color:var(--ok)">Nota de mesmo valor lançada no financeiro: ${esc(hs[0][1].replace(/^\d+\s*-\s*/, ""))} · ${esc(hs[0][2])} · ${esc(hs[0][5])}. Se for esta, use "Lançado no financeiro".</div>` : "";
+  }
   function relInfo() {
     const q = (m) => m ? `${new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : `<span class="hint">não importado</span>`;
     const fora = (t) => t === "PC" ? novo(S.itMeta, S.docMeta.PC) : novo(S.exMeta, S.docMeta.CT);
@@ -2152,7 +2158,7 @@ ${eap.txt}`;
     } else if (S.pedF === "sem") {
       const rows = L.sem.filter((r) => hitC(r.c));
       h = tbl(["Cotação", "Aprovado", "Observações", "Vincular ou justificar"], rows.map((r) =>
-        `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td class="obs">${esc(r.c.obs || "")}</td>` +
+        `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}${finDica(r.c)}</td><td class="r num">${fmt(r.c.valor)}</td><td class="obs">${esc(r.c.obs || "")}</td>` +
         `<td><div class="row"><input list="doc-dl" id="lk-doc-${esc(r.c.id)}" placeholder="PC 1234 ou CT/150" style="width:12rem"><button class="btn" type="button" data-el="add" data-cot="${esc(r.c.id)}">Vincular</button></div>` +
         justBtns(r.c.id) + `<div class="msg" id="el-msg-${esc(r.c.id)}"></div></td></tr>`), "Todas as cotações têm pedido ou contrato, ou estão justificadas.");
       const jr = L.just.filter((r) => hitC(r.c));
@@ -2434,14 +2440,32 @@ ${eap.txt}`;
       x.fin = f; const falta = -x.dif;
       if (!f.usado && Math.abs(f.total - falta) <= Math.max(1, x.ent * 0.005)) { x.st = "okfin"; f.usado = x.d.id; }
     }
+    // uma única nota do financeiro, de outro credor, com exatamente o valor que falta (ex.: faturamento direto do gás)
+    //   só com centavos e acima de R$ 1.000, para não pegar coincidência de valor redondo
+    const usadas = new Set();
+    for (const x of linhas) {
+      if (x.st !== "falta" && x.st !== "semnota" && x.st !== "liberar") continue;
+      const gap = r2(x.st === "liberar" ? x.aLiberar : -x.dif);
+      const mesmo = (r) => nomeKey(r[1]) === nomeKey(x.d.forn);
+      const hs = semDoc.filter((r) => nfTipo(r[2]) !== "GUIA" && !usadas.has(r) && Math.abs((r[7] || 0) - gap) < 0.005 && parseDate(r[5]) >= parseDate(x.d.data) - 30 * DAY);
+      if (hs.length === 1 && (mesmo(hs[0]) || (gap >= 1000 && Math.round(gap * 100) % 100 !== 0))) {
+        usadas.add(hs[0]); x.st = "okfin"; x.fin = { total: gap, tits: [hs[0]], outro: !mesmo(hs[0]) };
+      }
+    }
+    // nota lançada no pedido irmão: pedidos da mesma cotação (ou do mesmo fornecedor no mesmo dia) cujas diferenças se anulam
+    const irm = new Map();
+    for (const x of linhas) if (x.st === "acima" || x.st === "falta") { const k = x.cot != null ? "c" + x.cot : "f" + nomeKey(x.d.forn) + x.d.data; (irm.get(k) || irm.set(k, []).get(k)).push(x); }
+    for (const g of irm.values()) if (g.length > 1 && g.some((x) => x.st === "acima") && g.some((x) => x.st === "falta") && Math.abs(g.reduce((t, x) => t + x.dif, 0)) <= Math.max(1, g.reduce((t, x) => t + x.ent, 0) * 0.005))
+      for (const x of g) { x.st = "okirmao"; x.irmaos = g.filter((o) => o !== x).map((o) => o.d.id); }
     // lançado direto no financeiro: sem pedido/contrato, por credor
     const credores = new Map();
     for (const r of semDoc) {
+      if (usadas.has(r)) continue;
       const k = r[1]; const g = credores.get(k) || credores.set(k, { credor: k, total: 0, tits: [], orig: new Set() }).get(k);
       g.total = r2(g.total + (r[7] || 0)); g.tits.push(r); g.orig.add(r[3]);
       if (!g.cobre) g.cobre = finPor.get(nomeKey(k))?.usado || null;
     }
-    const out = { rows, linhas, credores: [...credores.values()].sort((a, b) => b.total - a.total), fora: [...fora.entries()].map(([id, tits]) => ({ id, tits, total: r2(tits.reduce((t, r) => t + (r[7] || 0), 0)) })) };
+    const out = { rows, linhas, semDoc: semDoc.filter((r) => !usadas.has(r)), credores: [...credores.values()].sort((a, b) => b.total - a.total), fora: [...fora.entries()].map(([id, tits]) => ({ id, tits, total: r2(tits.reduce((t, r) => t + (r[7] || 0), 0)) })) };
     nfCache = { v: S.nfVer, d: S.docVer, e: S.elos, c: S.cot, x: S.exVer, i: S.itParts, out };
     return out;
   }
@@ -2469,7 +2493,7 @@ ${eap.txt}`;
     const L = {
       div: A.linhas.filter((x) => x.st === "falta" || x.st === "acima"),
       semnota: A.linhas.filter((x) => x.st === "semnota" || x.st === "liberar"),
-      ok: A.linhas.filter((x) => x.st === "ok" || x.st === "okfin" || x.st === "okfrete"),
+      ok: A.linhas.filter((x) => /^ok/.test(x.st)),
       canc: A.linhas.filter((x) => fechado(x.d) && (x.ent > 0 || x.nf > 0 || saldoCanc(x.d) > 0)),
     };
     const cancRuim = L.canc.filter((x) => x.st === "acima" || x.st === "semnota" || x.st === "falta").length;
@@ -2496,7 +2520,8 @@ ${eap.txt}`;
       (x.d.tipo === "CT" && x.d.ex ? `<div class="row" style="margin-top:4px"><label class="hint" style="display:flex;gap:6px;align-items:center">Situação <select data-sit="${esc(x.d.id)}" style="width:auto">${["", "Concluído", "Rescindido"].map((o) => `<option value="${o}"${(S.situacao || {})[x.d.id] === o || (!o && !(S.situacao || {})[x.d.id]) ? " selected" : ""}>${o || `automática (${esc(x.d.sit)})`}</option>`).join("")}</select></label></div>` : "") +
       (x.ex ? `<div class="hint">Extrato: ${x.ex[6].length} medições · medido ${fmt(x.ex[8])} · liberado ${fmt(x.ex[10])}${x.ex[9] ? ` · caução ${fmt(x.ex[9])}` : ""}${x.ex[5] ? ` · aditivos: ${esc(x.ex[5])}` : ""}</div>` +
         `<details><summary class="hint">ver medições</summary>${x.ex[6].map((m) => `<div class="hint">Medição ${m[0]} · ${esc(m[1])} · <span class="num">${fmt(m[4])}</span>${m[3] ? ` (reajuste ${fmt(m[3])})` : ""}${m[5] ? ` · caução ${fmt(m[5])}` : ""}</div>`).join("")}</details>` : "") +
-      (x.fin ? `<div class="hint${x.st === "okfin" ? "" : " neg"}">${x.st === "okfin" ? `Fecha com ${fmt(x.fin.total)} lançados pelo financeiro sem o nº do ${x.d.tipo === "CT" ? "contrato" : "pedido"}` : `O mesmo fornecedor tem ${fmt(x.fin.total)} lançados pelo financeiro sem nº de pedido/contrato`}</div>` +
+      (x.irmaos ? `<div class="hint">Nota lançada junto com ${esc(x.irmaos.join(", "))}: as diferenças se anulam</div>` : "") +
+      (x.fin ? `<div class="hint${x.st === "okfin" ? "" : " neg"}">${x.st === "okfin" ? (x.fin.outro ? `Fecha com a nota de ${esc(x.fin.tits[0][1].replace(/^\d+\s*-\s*/, ""))} (${esc(x.fin.tits[0][2])}, ${fmt(x.fin.total)}) lançada pelo financeiro: confira se é faturamento direto` : `Fecha com ${fmt(x.fin.total)} lançados pelo financeiro sem o nº do ${x.d.tipo === "CT" ? "contrato" : "pedido"}`) : `O mesmo fornecedor tem ${fmt(x.fin.total)} lançados pelo financeiro sem nº de pedido/contrato`}</div>` +
         titsBox(x.fin.tits.map((r) => ({ r, parte: r[7], tipo: nfTipo(r[2]) })), "ver notas do financeiro") : "") + `</td>`;
     const lbl = (x) => x.d.tipo === "CT" ? "medido" : "entregue";
     let h = "";
@@ -2510,7 +2535,7 @@ ${eap.txt}`;
       const rows = L.canc.filter(hitL).sort((a, b) => (a.st === "ok") - (b.st === "ok") || b.ent - a.ent);
       h = `<p class="hint" style="margin:0 0 8px">Pedido cancelado ou contrato encerrado: o saldo só deve ser cancelado de verdade quando não há nota além do que foi entregue/medido. "Consumido" = notas lançadas.</p>` +
         tbl(["Pedido / contrato", "Entregue / medido", "Notas (consumido)", "Saldo cancelado", "Situação"], rows.map((x) => {
-          const sit = /^ok/.test(x.st) ? `<span class="pill s-OK">nota = entregue${x.st === "okfin" ? " (com financeiro)" : x.st === "okfrete" ? " + frete" : ""}</span>` : x.st === "acima" ? `<span class="pill s-DIVERGENCIA">nota acima do entregue</span>`
+          const sit = /^ok/.test(x.st) ? `<span class="pill s-OK">nota = entregue${x.st === "okfin" ? " (com financeiro)" : x.st === "okfrete" ? " + frete" : x.st === "okirmao" ? " (com pedido irmão)" : ""}</span>` : x.st === "acima" ? `<span class="pill s-DIVERGENCIA">nota acima do entregue</span>`
             : x.st === "semnota" ? `<span class="pill s-AGUARDANDO">entregue sem nota</span>` : x.st === "liberar" ? `<span class="pill s-AGUARDANDO">medido a liberar ${fmt(x.aLiberar)}</span>` : x.st === "falta" ? `<span class="pill s-AGUARDANDO">nota abaixo do entregue</span>` : `<span class="pill s-OK">nada entregue, nada faturado</span>`;
           return `<tr>${docTd(x)}<td class="r num">${fmt(x.ent)}</td><td class="r num">${fmt(x.nf)}</td><td class="r num">${fmt(saldoCanc(x.d))}</td><td>${sit}</td></tr>`;
         }), "Nenhum pedido cancelado ou contrato encerrado.");
