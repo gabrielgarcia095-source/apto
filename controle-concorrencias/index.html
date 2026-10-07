@@ -971,11 +971,14 @@ dl.kv dd { margin: 0; }
     const dl = await claude.use("downloads");
     if (!dl) return;
     const rows = [...D.rows].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
-    const cot = [["Nº COTAÇÃO", "DESCRIÇÃO", "VALOR APROVADO", "OBSERVAÇÕES", "VALOR PLANILHA ORÇAMENTO", "VALIDAÇÃO", "DIFERENÇA", "PEDIDO / CONTRATO", "FORNECEDOR", "SITUAÇÃO DO PEDIDO", "SUGESTÃO (A CONFIRMAR)"]]
+    const cot = [["Nº COTAÇÃO", "DESCRIÇÃO", "VALOR APROVADO", "OBSERVAÇÕES", "VALOR PLANILHA ORÇAMENTO", "VALIDAÇÃO", "DIFERENÇA", "PEDIDO / CONTRATO", "FORNECEDOR", "SITUAÇÃO DO PEDIDO", "VALOR EFETIVO (ENTREGUE/MEDIDO SE ENCERRADO)", "SALDO CANCELADO", "SUGESTÃO (A CONFIRMAR)", "JUSTIFICATIVA SEM PEDIDO"]]
       .concat(rows.map((x) => { const r = elosOf(x.id);
         return [/^\d+$/.test(x.num) ? Number(x.num) : x.num, x.desc, x.valor, x.obs || null, x.lanc, x.st, x.dif,
           r.certos.map((e) => e.doc.id).join("; ") || null, r.certos.map((e) => e.doc.forn).join("; ") || null, r.certos.map((e) => e.doc.sit).join("; ") || null,
-          r.certos.length ? null : r.sugestoes.map((e) => e.doc.id).join("; ") || null]; }));
+          r.certos.length ? Math.round(r.certos.reduce((t, e) => t + efetivo(e.doc), 0) * 100) / 100 : null,
+          r.certos.length ? Math.round(r.certos.reduce((t, e) => t + saldoCanc(e.doc), 0) * 100) / 100 || null : null,
+          r.certos.length ? null : r.sugestoes.map((e) => e.doc.id).join("; ") || null,
+          (() => { const j = justOf(x.id); return j ? (JUST[j.motivo] || j.motivo) + (j.obs ? ` · ${j.obs}` : "") : null; })()]; }));
     const conf = [["ID", "Nº COTAÇÃO", "VINCULADO À COTAÇÃO", "VALOR", "ITEM", "DESCRIÇÃO DA CONTRATAÇÃO"]]
       .concat(confRows().map((r) => { const v = r[4] != null ? S.vinc[String(r[4])] : null;
         return [r[4] ?? null, /^\d+$/.test(r[0]) ? Number(r[0]) : r[0], v && v.desc === r[3] ? v.cot : null, r[1], r[2], r[3]]; }));
@@ -1621,16 +1624,18 @@ ${eap.txt}`;
           if (isRej(d, c)) continue;
           for (const [v, f] of [[d.prim, "prim"], [d.sec, "sec"]]) {
             if (!v) continue;
+            const princ = f === "prim" || fechado(d); // documento encerrado: o valor efetivo (entregue/medido) também vale
             const diff = Math.abs(v - a.v);
             const exato = diff < 0.005, perto = !exato && diff <= Math.max(1, a.v * 0.0005);
             if (!exato && !perto) continue;
             const ft = toks(d.forn); const comum = [...ft].filter((w) => ctoks.has(w));
             const dd = exp != null ? Math.abs(parseDate(d.data) - exp) / DAY : null;
-            let score = (exato ? 100 : 55) - (f === "sec" ? 25 : 0) - (a.k !== "aprovado" ? 5 : 0) + (comum.length ? 30 : 0)
+            let score = (exato ? 100 : 55) - (princ ? 0 : 25) - (f === "sec" ? 2 : 0) - (a.k !== "aprovado" ? 5 : 0) + (comum.length ? 30 : 0)
               + (dd == null ? 0 : dd <= 60 ? 10 : dd > 240 ? -15 : 0) - (/Cancelad|Rescindid/i.test(d.sit) ? 5 : 0);
-            const campo = d.tipo === "CT" ? (f === "prim" ? "valor contratado" : "valor medido") : (f === "prim" ? "total do pedido" : "total entregue");
+            const campo = d.tipo === "CT" ? (f === "prim" ? "valor contratado" : princ ? "valor efetivo medido (contrato encerrado)" : "valor medido")
+              : (f === "prim" ? "total do pedido" : princ ? "valor efetivo entregue (pedido cancelado)" : "total entregue");
             const por = `${exato ? "valor exato" : `valor quase igual (dif. ${fmt(v - a.v)})`}: ${campo} = ${a.k}` + (comum.length ? ` · fornecedor citado (${comum.join(", ")})` : "") + (dd != null && dd > 240 ? " · data distante do esperado" : "");
-            cand.push({ c, d, score, exato, f, a, comum, por, dd });
+            cand.push({ c, d, score, exato, f, princ, a, comum, por, dd });
           }
         }
       }
@@ -1643,7 +1648,7 @@ ${eap.txt}`;
     const JANELA = 75;
     const add = (m, k, v) => (m.get(k) || m.set(k, new Set()).get(k)).add(v);
     const exCot = new Map(), exDoc = new Map(), okCot = new Map(), okDoc = new Map();
-    for (const x of cand) if (x.exato && x.f === "prim") {
+    for (const x of cand) if (x.exato && x.princ) {
       add(exCot, x.c.id, x.d.id); add(exDoc, x.d.id, x.c.id);
       if (x.dd == null || x.dd <= JANELA) { add(okCot, x.c.id, x.d.id); add(okDoc, x.d.id, x.c.id); }
     }
@@ -1657,12 +1662,12 @@ ${eap.txt}`;
       const contraFornecedor = (x.c.qc?.vencedores || []).length && !x.comum.length;
       // Certo só com valor exato no campo principal, sem fornecedor contrário ao QC, e:
       //  único em valor (e valor não redondo/baixo, ou data compatível), ou o único com data compatível
-      const certo = x.exato && x.f === "prim" && !contraFornecedor && ((unico && (valorForte || dataOk)) || unicoNaData);
+      const certo = x.exato && x.princ && !contraFornecedor && ((unico && (valorForte || dataOk)) || unicoNaData);
       docTaken.add(x.d.id); cotTaken.add(x.c.id);
       const r = res.get(x.c.id);
       if (certo) r.certos.push({ doc: x.d, por: x.por + (unico ? " · único possível" : " · único com data compatível"), auto: true });
       else {
-        const motivo = !x.exato ? "" : x.f !== "prim" ? " · bateu só com o valor entregue/medido" : contraFornecedor ? " · fornecedor diferente do vencedor do QC"
+        const motivo = !x.exato ? "" : !x.princ ? " · bateu só com o valor entregue/medido" : contraFornecedor ? " · fornecedor diferente do vencedor do QC"
           : !unico ? " · há outros documentos ou cotações com o mesmo valor" : " · valor redondo e baixo, e a data não confirma";
         r.sugestoes.push({ doc: x.d, por: x.por + motivo, score: x.score });
       }
@@ -1733,6 +1738,11 @@ ${eap.txt}`;
     return out;
   }
   const elosOf = (cid) => elosAll().res.get(cid) || { certos: [], sugestoes: [] };
+  // Pedido cancelado / contrato rescindido ou concluído: vale o entregue/medido; a diferença é saldo cancelado
+  function fechado(d) { return /Cancel|Rescind|Conclu/i.test(d.sit); }
+  function efetivo(d) { return fechado(d) ? d.sec : d.prim; }
+  function saldoCanc(d) { return fechado(d) ? Math.max(0, Math.round((d.prim - d.sec) * 100) / 100) : 0; }
+  function semEntrega(d) { return /Cancel|Rescind/i.test(d.sit) && !(d.sec > 0); }
   const sitCls = (s) => /Cancel|Rescind/i.test(s) ? "s-DIVERGENCIA" : /Total|Conclu/i.test(s) ? "s-OK" : /Parcial/i.test(s) ? "s-AGUARDANDO" : "s-FALTA";
 
   function docBadges(x) {
@@ -1746,7 +1756,8 @@ ${eap.txt}`;
   function docLine(d) {
     const lbl2 = d.tipo === "CT" ? "medido" : "entregue";
     return `<b>${esc(d.id)}</b> · ${esc(d.forn)} · ${esc(d.data)} · <span class="num">${fmt(d.prim)}</span>` +
-      ` <span class="hint">(${lbl2} <span class="num">${fmt(d.sec)}</span>)</span> <span class="pill ${sitCls(d.sit)}">${esc(d.sit)}</span>`;
+      ` <span class="hint">(${lbl2} <span class="num">${fmt(d.sec)}</span>)</span> <span class="pill ${sitCls(d.sit)}">${esc(d.sit)}</span>` +
+      (semEntrega(d) ? ` <span class="pill s-DIVERGENCIA">nada ${lbl2}</span>` : saldoCanc(d) > 0.009 ? ` <span class="hint neg">saldo cancelado ${fmt(saldoCanc(d))}</span>` : "");
   }
   // Bloco que aparece nos detalhes da cotação
   function elosDetail(x) {
@@ -1765,7 +1776,9 @@ ${eap.txt}`;
     try { await S.db.doc("config/elos").set(next); if (msgEl) { msgEl.className = "msg"; msgEl.textContent = ok; } }
     catch (e) { if (msgEl) { msgEl.className = "msg err"; msgEl.textContent = errText(e); } }
   }
-  const curElos = () => ({ links: [...(S.elos?.links || [])], rej: [...(S.elos?.rej || [])] });
+  const curElos = () => ({ links: [...(S.elos?.links || [])], rej: [...(S.elos?.rej || [])], just: [...(S.elos?.just || [])] });
+  const JUST = { financeiro: "Lançado direto no financeiro", semPedido: "Não gerou pedido" };
+  const justOf = (cid) => (S.elos?.just || []).find((j) => j.cot === cid) || null;
   function elosLink(e, docId, cotId) {
     e.links = e.links.filter((l) => l.doc !== docId); e.rej = e.rej.filter((l) => !(l.doc === docId && l.cot === cotId));
     e.links.push({ doc: docId, cot: cotId, em: new Date().toISOString() });
@@ -1796,6 +1809,12 @@ ${eap.txt}`;
       if (!hit) { msg.className = "msg err"; msg.textContent = `Não existe cotação nº ${v}.`; return; }
       elosLink(e, doc, hit[0]); return saveElos(e, msg, `${doc} vinculado à cotação ${hit[1].num}.`);
     }
+    if (act === "just") {
+      const obs = ($("just-obs-" + cot)?.value || "").trim();
+      e.just = e.just.filter((j) => j.cot !== cot); e.just.push({ cot, motivo: b.dataset.motivo, obs, em: new Date().toISOString() });
+      return saveElos(e, msg, `Marcado: ${JUST[b.dataset.motivo]}.`);
+    }
+    if (act === "unjust") { e.just = e.just.filter((j) => j.cot !== cot); return saveElos(e, msg, "Marcação desfeita."); }
     if (act === "all") {
       const lista = pedLists().sug;
       for (const r of lista) elosLink(e, r.s[0].doc.id, r.c.id);
@@ -1806,16 +1825,27 @@ ${eap.txt}`;
   // ---- aba Pedidos e contratos ----
   function pedLists() {
     const { res, docs, linkedDocs } = elosAll();
-    const ok = [], sug = [], sem = [];
+    const ok = [], sug = [], sem = [], just = [], canc = [];
+    const lancBy = new Map(D.rows.map((x) => [x.id, x.lanc]));
     for (const [id, c] of S.cot) {
       const r = res.get(id) || { certos: [], sugestoes: [] };
-      if (r.certos.length) ok.push({ c: { id, ...c }, r });
-      else if (r.sugestoes.length) sug.push({ c: { id, ...c }, r, s: r.sugestoes });
-      else if (c.valor) sem.push({ c: { id, ...c }, r });
+      const row = { c: { id, ...c }, r, j: justOf(id) };
+      if (r.certos.length) {
+        ok.push(row);
+        const fech = r.certos.filter((e) => saldoCanc(e.doc) > 0.009 || semEntrega(e.doc));
+        if (fech.length) {
+          row.saldo = Math.round(fech.reduce((t, e) => t + saldoCanc(e.doc), 0) * 100) / 100;
+          row.efetivo = Math.round(r.certos.reduce((t, e) => t + efetivo(e.doc), 0) * 100) / 100;
+          row.semEntrega = r.certos.every((e) => semEntrega(e.doc));
+          row.lanc = lancBy.get(id) || 0;
+          canc.push(row);
+        }
+      } else if (r.sugestoes.length) sug.push({ ...row, s: r.sugestoes });
+      else if (c.valor) (row.j ? just : sem).push(row);
     }
     const livres = docs.filter((d) => !linkedDocs.has(d.id));
     const ord = (a, b) => (a.c.ordem ?? 0) - (b.c.ordem ?? 0);
-    return { ok: ok.sort(ord), sug: sug.sort(ord), sem: sem.sort(ord), livres };
+    return { ok: ok.sort(ord), sug: sug.sort(ord), sem: sem.sort(ord), just: just.sort(ord), canc: canc.sort(ord), livres };
   }
   function renderPed() {
     const box = $("ped-list"); if (!box) return;
@@ -1826,12 +1856,14 @@ ${eap.txt}`;
     const L = pedLists();
     const soma = (arr, f) => arr.reduce((t, x) => t + (Number(f(x)) || 0), 0);
     const manual = L.ok.filter((r) => r.r.certos.some((e) => e.manual)).length;
+    const cancPend = L.canc.filter((r) => r.semEntrega && !r.j).length;
     $("mod-s-ped").textContent = `${L.ok.length} ligadas · ${L.sug.length} a confirmar · ${L.sem.length} sem pedido`;
     const tiles = [
       ["ok", "Ligadas", L.ok.length, `${fmt(soma(L.ok, (r) => r.c.valor))} aprovados · ${manual} confirmadas por você`, "var(--ok)"],
       ["sug", "Sugestões para confirmar", L.sug.length, "Confirme ou descarte cada uma", "var(--warn)"],
-      ["sem", "Cotações sem pedido/contrato", L.sem.length, `${fmt(soma(L.sem, (r) => r.c.valor))} aprovados`, "var(--bad)"],
-      ["livres", "Pedidos/contratos sem cotação", L.livres.length, `${fmt(soma(L.livres, (d) => d.prim))} em documentos`, "var(--wait)"],
+      ["sem", "Cotações sem pedido/contrato", L.sem.length, `${fmt(soma(L.sem, (r) => r.c.valor))} aprovados · ${L.just.length} justificadas`, "var(--bad)"],
+      ["canc", "Cancelados / saldo cancelado", L.canc.length, `${fmt(soma(L.canc, (r) => r.saldo))} cancelados · ${cancPend} sem entrega a explicar`, "var(--wait)"],
+      ["livres", "Pedidos/contratos sem cotação", L.livres.length, `${fmt(soma(L.livres, (d) => d.prim))} em documentos`, "var(--none)"],
     ];
     $("ped-summary").innerHTML = tiles.map(([k, l, n, sub, cor]) => `<button type="button" class="tile tbtn" data-pf="${k}" aria-pressed="${S.pedF === k}"><span class="eyebrow"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cor};margin-right:6px"></span>${l}</span><span class="v">${n}</span><span class="s">${sub}</span></button>`).join("");
     const q = fold($("ped-q").value.trim());
@@ -1846,24 +1878,45 @@ ${eap.txt}`;
           `<button class="btn${i ? "" : " primary"}" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Confirmar</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Não é este</button></div>`).join("")}</td><td></td></tr>`), "Nenhuma sugestão pendente.");
     } else if (S.pedF === "sem") {
       const rows = L.sem.filter((r) => hitC(r.c));
-      h = tbl(["Cotação", "Aprovado", "Observações", "Vincular a"], rows.map((r) =>
+      h = tbl(["Cotação", "Aprovado", "Observações", "Vincular ou justificar"], rows.map((r) =>
         `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td class="obs">${esc(r.c.obs || "")}</td>` +
-        `<td><div class="row"><input list="doc-dl" id="lk-doc-${esc(r.c.id)}" placeholder="PC 1234 ou CT/150" style="width:12rem"><button class="btn" type="button" data-el="add" data-cot="${esc(r.c.id)}">Vincular</button></div><div class="msg" id="el-msg-${esc(r.c.id)}"></div></td></tr>`), "Todas as cotações têm pedido ou contrato.");
+        `<td><div class="row"><input list="doc-dl" id="lk-doc-${esc(r.c.id)}" placeholder="PC 1234 ou CT/150" style="width:12rem"><button class="btn" type="button" data-el="add" data-cot="${esc(r.c.id)}">Vincular</button></div>` +
+        justBtns(r.c.id) + `<div class="msg" id="el-msg-${esc(r.c.id)}"></div></td></tr>`), "Todas as cotações têm pedido ou contrato, ou estão justificadas.");
+      const jr = L.just.filter((r) => hitC(r.c));
+      if (jr.length) h += `<h2 style="margin:14px 0 8px">Justificadas (${jr.length})</h2>` + tbl(["Cotação", "Aprovado", "Justificativa", ""], jr.map((r) =>
+        `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${esc(JUST[r.j.motivo] || r.j.motivo)}${r.j.obs ? ` <span class="hint">· ${esc(r.j.obs)}</span>` : ""}</td>` +
+        `<td><button class="btn" type="button" data-el="unjust" data-cot="${esc(r.c.id)}">Desfazer</button><div class="msg" id="el-msg-${esc(r.c.id)}"></div></td></tr>`), "");
+    } else if (S.pedF === "canc") {
+      const rows = L.canc.filter((r) => hitC(r.c) || r.r.certos.some((e) => hitD(e.doc)));
+      h = `<p class="hint" style="margin:0 0 8px">Pedido cancelado ou contrato rescindido/encerrado vale pelo que foi entregue ou medido. A diferença é o saldo cancelado. Compare com o que está lançado no orçamento.</p>` +
+        tbl(["Cotação", "Aprovado", "Pedido / contrato", "Efetivo", "Orçamento"], rows.map((r) => {
+          const acima = Math.round((r.lanc - r.efetivo) * 100) / 100;
+          const orc = !r.lanc ? `<span class="hint">não lançado</span>` : acima > 0.009 ? `<span class="neg">lançado ${fmt(r.lanc)}: ${fmt(acima)} acima do efetivo</span>` : `<span class="hint">lançado ${fmt(r.lanc)}</span>`;
+          const acao = r.semEntrega ? (r.j ? `<div>${esc(JUST[r.j.motivo] || r.j.motivo)}${r.j.obs ? ` · ${esc(r.j.obs)}` : ""} <button class="btn" type="button" data-el="unjust" data-cot="${esc(r.c.id)}">Desfazer</button></div>`
+            : `<div class="hint">Nada foi entregue. Se a compra foi paga pelo financeiro, marque abaixo; se foi refeita, vincule o novo pedido.</div>` + justBtns(r.c.id, true) +
+              `<div class="row"><input list="doc-dl" id="lk-doc-${esc(r.c.id)}" placeholder="Pedido que refez a compra" style="width:14rem"><button class="btn" type="button" data-el="add" data-cot="${esc(r.c.id)}">Vincular</button></div>`) : "";
+          return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.r.certos.map((e) => `<div>${docLine(e.doc)}</div>`).join("")}${acao}<div class="msg" id="el-msg-${esc(r.c.id)}"></div></td>` +
+            `<td class="r num">${fmt(r.efetivo)}<div class="hint">cancelado ${fmt(r.saldo)}</div></td><td>${orc}</td></tr>`; }), "Nenhum pedido cancelado ou contrato encerrado com saldo.");
     } else if (S.pedF === "livres") {
       const rows = L.livres.filter(hitD).sort((a, b) => parseDate(b.data) - parseDate(a.data));
       h = tbl(["Pedido / contrato", "Valor", "Vincular à cotação nº"], rows.map((d) =>
         `<tr><td>${docLine(d)}</td><td class="r num">${fmt(d.prim)}</td><td><div class="row"><input id="lk-cot-${d.id.replace(/\W/g, "_")}" placeholder="Nº da cotação" style="width:8rem"><button class="btn" type="button" data-el="doc2cot" data-doc="${esc(d.id)}">Vincular</button></div></td></tr>`), "Todos os pedidos e contratos estão ligados a uma cotação.");
     } else {
       const rows = L.ok.filter((r) => hitC(r.c) || r.r.certos.some((e) => hitD(e.doc)));
-      h = tbl(["Cotação", "Aprovado", "Pedido / contrato", "Diferença"], rows.map((r) => {
-        const soma = r.r.certos.reduce((t, e) => t + e.doc.prim, 0), dif = Math.round(((r.c.valor || 0) - soma) * 100) / 100;
+      h = tbl(["Cotação", "Aprovado", "Pedido / contrato", "Diferença p/ efetivo"], rows.map((r) => {
+        const soma = r.r.certos.reduce((t, e) => t + efetivo(e.doc), 0), dif = Math.round(((r.c.valor || 0) - soma) * 100) / 100;
         return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.r.certos.map((e) => `<div>${docLine(e.doc)} <span class="hint">· ${esc(e.manual ? "confirmado por você" : "automático")}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(r.c.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("")}</td>` +
           `<td class="r num${dif ? " neg" : ""}">${dif ? fmt(dif) : "—"}</td></tr>`; }), "Nenhuma cotação ligada ainda.");
     }
     box.innerHTML = h;
   }
+  function justBtns(cid, soFin) {
+    return `<div class="row" style="margin-top:4px"><input id="just-obs-${esc(cid)}" placeholder="Observação (opcional)" style="width:12rem">` +
+      `<button class="btn" type="button" data-el="just" data-motivo="financeiro" data-cot="${esc(cid)}">Lançado no financeiro</button>` +
+      (soFin ? "" : `<button class="btn" type="button" data-el="just" data-motivo="semPedido" data-cot="${esc(cid)}">Não gerou pedido</button>`) + `</div>`;
+  }
   function tbl(head, rows, vazio) {
-    return `<div class="tablebox"><table><thead><tr>${head.map((x, i) => `<th${i === 1 && x !== "Valor" ? ' class="r"' : x === "Valor" || x === "Diferença" ? ' class="r"' : ""}>${x}</th>`).join("")}</tr></thead><tbody>` +
+    return `<div class="tablebox"><table><thead><tr>${head.map((x, i) => `<th${i === 1 && x !== "Valor" ? ' class="r"' : x === "Valor" || x === "Efetivo" || x.startsWith("Diferença") ? ' class="r"' : ""}>${x}</th>`).join("")}</tr></thead><tbody>` +
       (rows.length ? rows.slice(0, 300).join("") + (rows.length > 300 ? `<tr><td colspan="${head.length}" class="hint">Mostrando 300 de ${rows.length}. Use a busca.</td></tr>` : "") : `<tr><td colspan="${head.length}" class="empty">${vazio}</td></tr>`) + `</tbody></table></div>`;
   }
   function fillDocList() {
