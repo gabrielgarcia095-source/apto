@@ -1,0 +1,746 @@
+<title>Controle de Concorrências</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: ferramenta de conferência — faixa de resumo no topo, abas, formulário lateral + tabela larga */
+:root {
+  --bg: #f3f4f1;
+  --panel: #ffffff;
+  --ink: #1d2328;
+  --muted: #5d676f;
+  --line: #d9ddd8;
+  --accent: #1f5c86;
+  --accent-ink: #ffffff;
+  --accent-soft: #e2edf5;
+  --ok: #2f7d4f;       --ok-bg: #e3f2e8;
+  --bad: #b3312a;      --bad-bg: #f8e1df;
+  --warn: #b5630f;     --warn-bg: #fbead6;
+  --wait: #7d6a2e;     --wait-bg: #f3edd6;
+  --none: #6b7178;     --none-bg: #eaecec;
+  --row-hover: #f7f8f6;
+  --font-ui: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15191c; --panel: #1d2226; --ink: #e6e9ea; --muted: #9aa4ab; --line: #2f363b;
+  --accent: #6aaedb; --accent-ink: #0d1a24; --accent-soft: #1d3342;
+  --ok: #6cc893; --ok-bg: #19382a; --bad: #f08a82; --bad-bg: #42201d;
+  --warn: #f0a55a; --warn-bg: #43301b; --wait: #d6c27e; --wait-bg: #383220;
+  --none: #a3a9ae; --none-bg: #2a3034; --row-hover: #22282c; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #15191c; --panel: #1d2226; --ink: #e6e9ea; --muted: #9aa4ab; --line: #2f363b;
+  --accent: #6aaedb; --accent-ink: #0d1a24; --accent-soft: #1d3342;
+  --ok: #6cc893; --ok-bg: #19382a; --bad: #f08a82; --bad-bg: #42201d;
+  --warn: #f0a55a; --warn-bg: #43301b; --wait: #d6c27e; --wait-bg: #383220;
+  --none: #a3a9ae; --none-bg: #2a3034; --row-hover: #22282c; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px; display: grid; gap: 18px; }
+h1 { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+h2 { font-size: 1rem; font-weight: 700; margin: 0; }
+.eyebrow { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
+.notice { padding: 10px 14px; border-radius: 6px; background: var(--wait-bg); color: var(--ink); border: 1px solid var(--line); }
+
+/* resumo */
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.tile { background: var(--panel); padding: 12px 14px; display: grid; gap: 2px; min-width: 0; }
+.tile .v { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 1.15rem; font-weight: 500; overflow-wrap: anywhere; }
+.tile .s { color: var(--muted); font-size: .8rem; }
+.bar { height: 6px; background: var(--none-bg); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font: inherit; font-size: .82rem; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 5px 12px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+.chip b { font-family: var(--font-num); font-weight: 500; }
+.chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* abas */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab { font: inherit; font-weight: 600; background: none; border: 0; border-bottom: 3px solid transparent; padding: 8px 14px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+.grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.sticky { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+@media (max-width: 900px) { .sticky { position: static; } }
+
+label { display: grid; gap: 4px; font-size: .8rem; font-weight: 600; color: var(--muted); }
+input, textarea, select { font: inherit; font-size: .92rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%; min-width: 0; }
+textarea { resize: vertical; min-height: 60px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hint { font-size: .78rem; color: var(--muted); font-weight: 400; }
+.check { font-size: .82rem; padding: 8px 10px; border-radius: 6px; background: var(--none-bg); color: var(--ink); }
+.check.ok { background: var(--ok-bg); }
+.check.warn { background: var(--warn-bg); }
+.check.bad { background: var(--bad-bg); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { font: inherit; font-weight: 600; font-size: .88rem; border-radius: 6px; padding: 8px 14px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.danger { color: var(--bad); }
+.btn.danger.armed { background: var(--bad); color: var(--panel); border-color: var(--bad); }
+.btn:disabled { opacity: .5; cursor: default; }
+.msg { font-size: .82rem; min-height: 1.2em; color: var(--muted); }
+.msg.err { color: var(--bad); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.toolbar input { flex: 1 1 220px; width: auto; }
+.toolbar select { width: auto; }
+
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; min-width: 820px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+td.r, th.r { text-align: right; }
+tbody tr.main { cursor: pointer; }
+tbody tr.main:hover { background: var(--row-hover); }
+tr.sel { background: var(--accent-soft) !important; }
+td.desc { min-width: 220px; }
+td.obs { color: var(--muted); font-size: .82rem; max-width: 260px; }
+.pill { display: inline-block; font-size: .7rem; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.s-OK { color: var(--ok); background: var(--ok-bg); }
+.s-DIVERGENCIA { color: var(--bad); background: var(--bad-bg); }
+.s-FALTA { color: var(--warn); background: var(--warn-bg); }
+.s-AGUARDANDO { color: var(--wait); background: var(--wait-bg); }
+.s-SEM { color: var(--none); background: var(--none-bg); }
+.detail td { background: var(--bg); padding: 10px 16px; }
+.detail table { min-width: 0; }
+.detail th, .detail td { padding: 4px 8px; font-size: .82rem; background: transparent; position: static; }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+.diff-neg { color: var(--bad); }
+.dup { font-size: .7rem; color: var(--warn); font-weight: 700; }
+.more { text-align: center; padding: 10px; }
+dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: .86rem; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Suprimentos · conferência de orçamento</div>
+      <h1>Controle de Concorrências</h1>
+      <p>Cadastre cada cotação aprovada. O site compara com a planilha de orçamento importada e mostra o que já foi lançado, o que falta e onde o valor diverge.</p>
+    </div>
+    <div class="row">
+      <button class="btn" id="btn-export" type="button" hidden>Baixar planilha (.xlsx)</button>
+    </div>
+  </header>
+
+  <div class="notice" id="notice" hidden></div>
+
+  <section class="summary" id="summary" aria-label="Resumo">
+    <div class="tile"><span class="eyebrow">Total aprovado</span><span class="v" id="t-aprov">—</span><span class="s" id="t-aprov-s">carregando…</span></div>
+    <div class="tile"><span class="eyebrow">Lançado no orçamento</span><span class="v" id="t-lanc">—</span><span class="s" id="t-lanc-s">&nbsp;</span><div class="bar"><i id="t-bar" style="width:0%"></i></div></div>
+    <div class="tile"><span class="eyebrow">Diferença a conciliar</span><span class="v" id="t-dif">—</span><span class="s" id="t-dif-s">&nbsp;</span></div>
+    <div class="tile"><span class="eyebrow">Conferência importada</span><span class="v" id="t-conf" style="font-size:1rem">—</span><span class="s" id="t-conf-s">&nbsp;</span></div>
+  </section>
+
+  <div class="chips" id="chips" role="group" aria-label="Filtrar por situação"></div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-cot" aria-selected="true" type="button">Cotações</button>
+    <button class="tab" role="tab" id="tab-conf" aria-selected="false" type="button">Importar conferência</button>
+    <button class="tab" role="tab" id="tab-sem" aria-selected="false" type="button">Lançado sem cotação <span id="sem-count" class="num"></span></button>
+  </nav>
+
+  <!-- ABA COTAÇÕES -->
+  <section id="view-cot" class="grid">
+    <form class="panel sticky" id="form" autocomplete="off">
+      <div class="row" style="justify-content:space-between">
+        <h2 id="form-title">Nova cotação</h2>
+        <button class="btn" type="button" id="btn-cancel" hidden>Cancelar</button>
+      </div>
+      <label>Nº da cotação
+        <input id="f-num" required placeholder="Ex.: 504">
+      </label>
+      <div class="check" id="f-check">Digite o número para ver se já está na planilha de orçamento.</div>
+      <label>Descrição
+        <input id="f-desc" required placeholder="Ex.: Caçamba entulho">
+      </label>
+      <label>Valor aprovado (R$)
+        <input id="f-valor" inputmode="decimal" placeholder="Ex.: 34.300,00">
+        <span class="hint">Vazio = aguardando valor. Aceita conta, ex.: 241.519,47 - 46.329,40</span>
+        <span class="hint num" id="f-valor-prev"></span>
+      </label>
+      <label>Observações
+        <textarea id="f-obs" placeholder="Ex.: Cancelado saldo"></textarea>
+      </label>
+      <div class="row">
+        <button class="btn primary" type="submit" id="btn-save" disabled>Salvar cotação</button>
+        <button class="btn danger" type="button" id="btn-del" hidden>Excluir</button>
+      </div>
+      <div class="msg" id="f-msg" role="status"></div>
+    </form>
+
+    <div style="display:grid; gap:10px; min-width:0">
+      <div class="toolbar">
+        <input id="q" type="search" placeholder="Buscar por nº, descrição ou observação">
+        <select id="sort" aria-label="Ordenar">
+          <option value="ordem">Ordem de cadastro</option>
+          <option value="recente">Mais recentes primeiro</option>
+          <option value="valor">Maior valor aprovado</option>
+          <option value="dif">Maior diferença</option>
+        </select>
+      </div>
+      <div class="tablebox">
+        <table>
+          <thead><tr>
+            <th>Nº</th><th>Descrição</th><th class="r">Aprovado</th><th class="r">Lançado</th><th class="r">Diferença</th><th>Situação</th><th>Observações</th>
+          </tr></thead>
+          <tbody id="tbody"><tr><td colspan="7" class="empty">Carregando suas cotações…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="hint">Clique numa linha para ver os lançamentos da conferência e editar a cotação.</div>
+    </div>
+  </section>
+
+  <!-- ABA IMPORTAR -->
+  <section id="view-conf" class="grid" hidden>
+    <div class="panel">
+      <h2>Importar planilha de orçamento</h2>
+      <p class="hint" style="margin:0">Escolha o arquivo .xlsx (ou .csv) de onde vem a conferência. A importação substitui a anterior; suas cotações não mudam.</p>
+      <label>Arquivo
+        <input type="file" id="i-file" accept=".xlsx,.xlsm,.xls,.csv">
+      </label>
+      <div id="i-map" hidden style="display:grid; gap:10px">
+        <label>Aba <select id="i-sheet"></select></label>
+        <label>Linha do cabeçalho <input id="i-header" type="number" min="1" value="1"></label>
+        <label>Coluna do Nº da cotação <select id="i-c-num"></select></label>
+        <label>Coluna do valor <select id="i-c-val"></select></label>
+        <label>Coluna do item (opcional) <select id="i-c-item"></select></label>
+        <label>Coluna da descrição (opcional) <select id="i-c-desc"></select></label>
+      </div>
+      <div class="msg" id="i-msg" role="status"></div>
+      <div class="row"><button class="btn primary" id="i-go" type="button" disabled>Substituir conferência</button></div>
+    </div>
+    <div class="panel">
+      <h2>Conferência atual</h2>
+      <dl class="kv" id="conf-info"><dt>Situação</dt><dd>Nenhuma importação ainda.</dd></dl>
+      <div id="i-prev"></div>
+    </div>
+  </section>
+
+  <!-- ABA SEM COTAÇÃO -->
+  <section id="view-sem" hidden style="display:grid; gap:10px">
+    <p class="hint" style="margin:0">Números que aparecem na planilha de orçamento mas não existem entre as cotações cadastradas.</p>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>Nº na planilha</th><th class="r">Lançamentos</th><th class="r">Valor lançado</th><th>Itens / descrições</th><th></th></tr></thead>
+        <tbody id="tbody-sem"><tr><td colspan="5" class="empty">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+  const N2 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (v) => (v == null || v === "" ? "—" : BRL.format(v));
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const PART_SIZE = 400;
+
+  const STATUS = [
+    { k: "OK", label: "Conferidas (OK)", cls: "OK", color: "var(--ok)" },
+    { k: "DIVERGÊNCIA", label: "Divergência de valor", cls: "DIVERGENCIA", color: "var(--bad)" },
+    { k: "FALTA LANÇAR", label: "Falta lançar", cls: "FALTA", color: "var(--warn)" },
+    { k: "AGUARDANDO VALOR", label: "Aguardando valor", cls: "AGUARDANDO", color: "var(--wait)" },
+    { k: "SEM CUSTO", label: "Sem custo", cls: "SEM", color: "var(--none)" },
+  ];
+  const statusCls = Object.fromEntries(STATUS.map((s) => [s.k, s.cls]));
+
+  // Nº normalizado: "015" e 15 batem; "015/2025" fica como texto
+  function key(x) {
+    if (x == null) return "";
+    let s = String(x).trim().toUpperCase().replace(/\s+/g, " ");
+    if (/^\d+(\.0+)?$/.test(s)) s = String(parseInt(s, 10));
+    return s;
+  }
+
+  // Valor: aceita 1.234,56 | 1234.56 | contas com + - * / ( )
+  function parseValor(raw) {
+    const s = String(raw ?? "").replace(/R\$/gi, "").trim();
+    if (!s) return { valor: null, formula: null };
+    const toks = [];
+    const re = /\s*([0-9][0-9.,]*|[-+*/()])/y;
+    let m, pos = 0;
+    while (pos < s.length) {
+      re.lastIndex = pos;
+      m = re.exec(s);
+      if (!m) { if (/^\s*$/.test(s.slice(pos))) break; return { erro: "Valor inválido" }; }
+      toks.push(m[1]); pos = re.lastIndex;
+    }
+    const num = (t) => {
+      if (t.includes(",")) return parseFloat(t.replace(/\./g, "").replace(",", "."));
+      const dots = (t.match(/\./g) || []).length;
+      if (dots > 1 || /^\d{1,3}\.\d{3}$/.test(t)) return parseFloat(t.replace(/\./g, ""));
+      return parseFloat(t);
+    };
+    let i = 0;
+    const peek = () => toks[i], next = () => toks[i++];
+    function expr() { let v = term(); while (peek() === "+" || peek() === "-") { const op = next(); const r = term(); v = op === "+" ? v + r : v - r; } return v; }
+    function term() { let v = fac(); while (peek() === "*" || peek() === "/") { const op = next(); const r = fac(); v = op === "*" ? v * r : v / r; } return v; }
+    function fac() {
+      const t = next();
+      if (t === "-") return -fac();
+      if (t === "(") { const v = expr(); if (next() !== ")") throw 0; return v; }
+      if (t && /^[0-9]/.test(t)) { const v = num(t); if (!isFinite(v)) throw 0; return v; }
+      throw 0;
+    }
+    try {
+      const v = expr();
+      if (i !== toks.length || !isFinite(v)) return { erro: "Valor inválido" };
+      const isFormula = toks.some((t) => /[-+*/()]/.test(t)) && toks.length > 1;
+      return { valor: Math.round(v * 100) / 100, formula: isFormula ? s : null };
+    } catch { return { erro: "Valor inválido" }; }
+  }
+
+  function statusOf(valor, lanc, desc) {
+    if (!desc) return "";
+    if (valor == null) return "AGUARDANDO VALOR";
+    if (valor === 0 && lanc === 0) return "SEM CUSTO";
+    if (lanc === 0) return "FALTA LANÇAR";
+    if (Math.round(valor) === Math.round(lanc)) return "OK";
+    return "DIVERGÊNCIA";
+  }
+
+  // ---------- estado ----------
+  const S = {
+    db: null,
+    cot: new Map(),           // id -> doc
+    confMeta: null,
+    confParts: new Map(),     // "parte-N" -> rows
+    loadedCot: false, loadedConf: false,
+    filter: "TODOS", q: "", sort: "ordem",
+    editing: null, expanded: null, showAll: false,
+  };
+  let D = { rows: [], confBy: new Map(), sem: [], counts: {}, keyCount: new Map() };
+
+  function confRows() {
+    const n = S.confMeta?.partes ?? 0;
+    const out = [];
+    for (let p = 0; p < n; p++) { const r = S.confParts.get("parte-" + p); if (r) out.push(...r); }
+    return out;
+  }
+
+  function compute() {
+    const confBy = new Map();
+    for (const r of confRows()) {
+      const k = key(r[0]); if (!k) continue;
+      let g = confBy.get(k); if (!g) confBy.set(k, (g = { total: 0, linhas: [] }));
+      g.total += Number(r[1]) || 0; g.linhas.push(r);
+    }
+    const keyCount = new Map();
+    for (const c of S.cot.values()) { const k = key(c.num); keyCount.set(k, (keyCount.get(k) || 0) + 1); }
+    const rows = [];
+    const counts = Object.fromEntries(STATUS.map((s) => [s.k, { n: 0, v: 0 }]));
+    let aprov = 0;
+    for (const [id, c] of S.cot) {
+      const k = key(c.num);
+      const lanc = Math.round((confBy.get(k)?.total || 0) * 100) / 100;
+      const st = statusOf(c.valor, lanc, c.desc);
+      const dif = c.valor == null ? null : Math.round((c.valor - lanc) * 100) / 100;
+      if (c.valor != null) aprov += c.valor;
+      if (counts[st]) { counts[st].n++; counts[st].v += dif || 0; }
+      rows.push({ id, ...c, k, lanc, st, dif });
+    }
+    let lancTotal = 0;
+    for (const k of keyCount.keys()) lancTotal += confBy.get(k)?.total || 0;
+    const sem = [];
+    for (const [k, g] of confBy) if (!keyCount.has(k)) sem.push({ k, ...g });
+    sem.sort((a, b) => b.total - a.total);
+    D = { rows, confBy, sem, counts, keyCount, aprov, lancTotal };
+  }
+
+  // ---------- render ----------
+  function renderSummary() {
+    const { aprov, lancTotal, counts } = D;
+    const ready = S.loadedCot;
+    $("t-aprov").textContent = ready ? BRL.format(aprov) : "—";
+    $("t-aprov-s").textContent = ready ? `${S.cot.size} cotações cadastradas` : "carregando…";
+    $("t-lanc").textContent = ready ? BRL.format(lancTotal) : "—";
+    const pct = aprov ? Math.min(100, (lancTotal / aprov) * 100) : 0;
+    $("t-lanc-s").textContent = ready ? `${N2.format(aprov ? (lancTotal / aprov) * 100 : 0)}% do aprovado` : "";
+    $("t-bar").style.width = pct + "%";
+    const dif = aprov - lancTotal;
+    $("t-dif").textContent = ready ? BRL.format(dif) : "—";
+    $("t-dif-s").textContent = ready ? `${counts["DIVERGÊNCIA"].n} divergências · ${counts["FALTA LANÇAR"].n} faltando lançar` : "";
+    const m = S.confMeta;
+    $("t-conf").textContent = m ? new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "Nenhuma";
+    $("t-conf-s").textContent = m ? `${m.linhas} lançamentos · ${m.arquivo || ""}` : "Importe na aba ao lado";
+    $("sem-count").textContent = D.sem.length ? `(${D.sem.length})` : "";
+  }
+
+  function renderChips() {
+    const items = [{ k: "TODOS", label: "Todas", n: S.cot.size }].concat(STATUS.map((s) => ({ ...s, n: D.counts[s.k]?.n || 0 })));
+    $("chips").innerHTML = items.map((s) =>
+      `<button type="button" class="chip" data-f="${esc(s.k)}" aria-pressed="${S.filter === s.k}">` +
+      (s.color ? `<span class="dot" style="background:${s.color}"></span>` : "") +
+      `${esc(s.label)} <b>${s.n}</b></button>`).join("");
+  }
+
+  function visibleRows() {
+    const q = S.q.trim().toLowerCase();
+    let r = D.rows.filter((x) => (S.filter === "TODOS" || x.st === S.filter) &&
+      (!q || String(x.num).toLowerCase().includes(q) || (x.desc || "").toLowerCase().includes(q) || (x.obs || "").toLowerCase().includes(q)));
+    const by = {
+      ordem: (a, b) => (a.ordem ?? 0) - (b.ordem ?? 0),
+      recente: (a, b) => (b.ordem ?? 0) - (a.ordem ?? 0),
+      valor: (a, b) => (b.valor ?? -1) - (a.valor ?? -1),
+      dif: (a, b) => Math.abs(b.dif ?? 0) - Math.abs(a.dif ?? 0),
+    }[S.sort];
+    return r.sort(by);
+  }
+
+  function detailHtml(x) {
+    const g = D.confBy.get(x.k);
+    const extra = [];
+    if (x.formula) extra.push(`Valor calculado de: <span class="num">${esc(x.formula)}</span>`);
+    if ((D.keyCount.get(x.k) || 0) > 1) extra.push(`<span class="dup">Atenção: há mais de uma cotação com o nº ${esc(x.num)}.</span>`);
+    const head = extra.length ? `<div class="hint" style="margin-bottom:6px">${extra.join(" · ")}</div>` : "";
+    if (!g) return head + `<div class="hint">Nenhum lançamento com o nº ${esc(x.num)} na planilha de orçamento.</div>`;
+    return head + `<table><thead><tr><th>Item do orçamento</th><th>Descrição da contratação</th><th class="r">Valor</th></tr></thead><tbody>` +
+      g.linhas.map((l) => `<tr><td>${esc(l[2])}</td><td>${esc(l[3])}</td><td class="r num">${fmt(Number(l[1]) || 0)}</td></tr>`).join("") +
+      `</tbody></table>`;
+  }
+
+  function renderTable() {
+    const tb = $("tbody");
+    if (!S.db && S.dbChecked) { tb.innerHTML = `<tr><td colspan="7" class="empty">Sem acesso ao banco de dados nesta visualização.</td></tr>`; return; }
+    if (!S.loadedCot) { tb.innerHTML = `<tr><td colspan="7" class="empty">Carregando suas cotações…</td></tr>`; return; }
+    if (!S.cot.size) { tb.innerHTML = `<tr><td colspan="7" class="empty">Nenhuma cotação ainda. Cadastre a primeira no formulário ao lado.</td></tr>`; return; }
+    const rows = visibleRows();
+    if (!rows.length) { tb.innerHTML = `<tr><td colspan="7" class="empty">Nada encontrado com esse filtro.</td></tr>`; return; }
+    const LIMIT = 200;
+    const shown = S.showAll ? rows : rows.slice(0, LIMIT);
+    let h = "";
+    for (const x of shown) {
+      const dup = (D.keyCount.get(x.k) || 0) > 1 ? ` <span class="dup" title="Nº repetido">2×</span>` : "";
+      h += `<tr class="main${S.editing === x.id ? " sel" : ""}" data-id="${esc(x.id)}">` +
+        `<td class="num">${esc(x.num)}${dup}</td><td class="desc">${esc(x.desc)}</td>` +
+        `<td class="r num">${fmt(x.valor)}</td><td class="r num">${x.lanc ? fmt(x.lanc) : "—"}</td>` +
+        `<td class="r num${x.dif < 0 ? " diff-neg" : ""}">${x.dif == null || x.dif === 0 ? "—" : fmt(x.dif)}</td>` +
+        `<td>${x.st ? `<span class="pill s-${statusCls[x.st]}">${esc(x.st)}</span>` : ""}</td>` +
+        `<td class="obs">${esc(x.obs)}</td></tr>`;
+      if (S.expanded === x.id) h += `<tr class="detail"><td colspan="7">${detailHtml(x)}</td></tr>`;
+    }
+    if (rows.length > shown.length) h += `<tr><td colspan="7" class="more"><button class="btn" type="button" id="btn-more">Mostrar todas (${rows.length})</button></td></tr>`;
+    tb.innerHTML = h;
+  }
+
+  function renderSem() {
+    const tb = $("tbody-sem");
+    if (!S.confMeta) { tb.innerHTML = `<tr><td colspan="5" class="empty">Importe a planilha de orçamento para ver esta lista.</td></tr>`; return; }
+    if (!D.sem.length) { tb.innerHTML = `<tr><td colspan="5" class="empty">Todos os números da planilha têm cotação cadastrada.</td></tr>`; return; }
+    tb.innerHTML = D.sem.map((g) => {
+      const nomes = [...new Set(g.linhas.map((l) => l[3] || l[2]).filter(Boolean))].slice(0, 4).join(" · ");
+      return `<tr><td class="num">${esc(g.k)}</td><td class="r num">${g.linhas.length}</td><td class="r num">${fmt(g.total)}</td><td class="obs">${esc(nomes)}</td>` +
+        `<td><button class="btn" type="button" data-cad="${esc(g.k)}" data-desc="${esc(g.linhas[0]?.[3] || g.linhas[0]?.[2] || "")}" data-val="${g.total}">Cadastrar</button></td></tr>`;
+    }).join("");
+  }
+
+  function renderConfInfo() {
+    const m = S.confMeta;
+    $("conf-info").innerHTML = m
+      ? `<dt>Arquivo</dt><dd>${esc(m.arquivo || "—")}</dd><dt>Aba</dt><dd>${esc(m.aba || "—")}</dd>` +
+        `<dt>Importado em</dt><dd>${new Date(m.importadoEm).toLocaleString("pt-BR")}</dd>` +
+        `<dt>Lançamentos</dt><dd class="num">${m.linhas}</dd><dt>Total</dt><dd class="num">${fmt(m.total)}</dd>`
+      : `<dt>Situação</dt><dd>Nenhuma importação ainda.</dd>`;
+  }
+
+  function renderAll() {
+    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); updateCheck();
+  }
+
+  // ---------- formulário ----------
+  function nextNum() {
+    let max = 0;
+    for (const c of S.cot.values()) if (/^\d+$/.test(String(c.num).trim())) max = Math.max(max, parseInt(c.num, 10));
+    return String(max + 1);
+  }
+
+  function updateCheck() {
+    const k = key($("f-num").value);
+    const el = $("f-check");
+    if (!k) { el.className = "check"; el.textContent = "Digite o número para ver se já está na planilha de orçamento."; return; }
+    const g = D.confBy.get(k);
+    const outras = [...S.cot.entries()].filter(([id, c]) => key(c.num) === k && id !== S.editing);
+    let t = g ? `Já lançado na planilha: ${fmt(g.total)} em ${g.linhas.length} linha(s).` : "Ainda não aparece na planilha de orçamento.";
+    const pv = parseValor($("f-valor").value);
+    let cls = g ? "ok" : "warn";
+    if (g && pv.valor != null && Math.round(pv.valor) !== Math.round(g.total)) { cls = "bad"; t += ` Diferença: ${fmt(pv.valor - g.total)}.`; }
+    if (outras.length) { cls = "bad"; t += ` Já existe cotação com esse nº: “${outras[0][1].desc}”.`; }
+    el.className = "check " + cls; el.textContent = t;
+  }
+
+  function updateValorPrev() {
+    const pv = parseValor($("f-valor").value);
+    $("f-valor-prev").textContent = pv.erro ? pv.erro : pv.formula ? "= " + fmt(pv.valor) : "";
+  }
+
+  function resetForm(keepMsg) {
+    S.editing = null;
+    $("form-title").textContent = "Nova cotação";
+    $("f-num").value = S.cot.size ? nextNum() : "";
+    $("f-desc").value = ""; $("f-valor").value = ""; $("f-obs").value = "";
+    $("btn-cancel").hidden = true; $("btn-del").hidden = true; disarmDel();
+    $("btn-save").textContent = "Salvar cotação";
+    if (!keepMsg) setMsg("");
+    updateValorPrev(); updateCheck();
+  }
+
+  function editRow(id) {
+    const c = S.cot.get(id); if (!c) return;
+    S.editing = id;
+    $("form-title").textContent = "Editar cotação " + c.num;
+    $("f-num").value = c.num ?? "";
+    $("f-desc").value = c.desc ?? "";
+    $("f-valor").value = c.formula ? c.formula : c.valor == null ? "" : N2.format(c.valor);
+    $("f-obs").value = c.obs ?? "";
+    $("btn-cancel").hidden = false; $("btn-del").hidden = false; disarmDel();
+    $("btn-save").textContent = "Salvar alterações";
+    setMsg(""); updateValorPrev(); updateCheck();
+  }
+
+  function setMsg(t, err) { const m = $("f-msg"); m.textContent = t; m.className = "msg" + (err ? " err" : ""); }
+
+  function errText(e) {
+    const c = e?.code;
+    if (c === "quota_exceeded") return "O banco de dados está cheio. Exclua cotações antigas para continuar.";
+    if (c === "invalid_argument") return "Você não tem permissão para salvar aqui.";
+    if (c === "resource_exhausted") return "Muitas gravações seguidas. Espere alguns segundos e tente de novo.";
+    return "Não foi possível salvar agora. Tente de novo em instantes.";
+  }
+
+  $("form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (!S.db) return;
+    const num = $("f-num").value.trim(), desc = $("f-desc").value.trim(), obs = $("f-obs").value.trim();
+    const pv = parseValor($("f-valor").value);
+    if (!num || !desc) return setMsg("Preencha o nº e a descrição.", true);
+    if (pv.erro) return setMsg("Valor inválido. Use números como 12.345,67.", true);
+    const old = S.editing ? S.cot.get(S.editing) : null;
+    let ordem = old?.ordem;
+    if (ordem == null) { ordem = 0; for (const c of S.cot.values()) ordem = Math.max(ordem, c.ordem || 0); ordem++; }
+    const data = { num, desc, valor: pv.valor, formula: pv.formula, obs, ordem, atualizadoEm: new Date().toISOString() };
+    $("btn-save").disabled = true;
+    try {
+      const ref = S.editing ? S.db.collection("cotacoes").doc(S.editing) : S.db.collection("cotacoes").doc();
+      await ref.set(data);
+      const msg = old ? `Cotação ${num} atualizada.` : `Cotação ${num} cadastrada.`;
+      resetForm(); setMsg(msg);
+    } catch (e) { setMsg(errText(e), true); }
+    finally { $("btn-save").disabled = false; }
+  });
+
+  let delArmed = null;
+  function disarmDel() { clearTimeout(delArmed); delArmed = null; const b = $("btn-del"); b.classList.remove("armed"); b.textContent = "Excluir"; }
+  $("btn-del").addEventListener("click", async () => {
+    if (!S.editing || !S.db) return;
+    const b = $("btn-del");
+    if (!delArmed) { b.classList.add("armed"); b.textContent = "Confirmar exclusão"; delArmed = setTimeout(disarmDel, 4000); return; }
+    disarmDel();
+    const c = S.cot.get(S.editing);
+    try { await S.db.collection("cotacoes").doc(S.editing).delete(); S.expanded = null; resetForm(); setMsg(`Cotação ${c?.num ?? ""} excluída.`); }
+    catch (e) { setMsg(errText(e), true); }
+  });
+  $("btn-cancel").addEventListener("click", () => { resetForm(); renderTable(); });
+  $("f-num").addEventListener("input", updateCheck);
+  $("f-valor").addEventListener("input", () => { updateValorPrev(); updateCheck(); });
+
+  $("tbody").addEventListener("click", (ev) => {
+    if (ev.target.closest("#btn-more")) { S.showAll = true; renderTable(); return; }
+    const tr = ev.target.closest("tr.main"); if (!tr) return;
+    const id = tr.dataset.id;
+    S.expanded = S.expanded === id ? null : id;
+    if (S.expanded) editRow(id); else resetForm();
+    renderTable();
+    if (window.matchMedia("(max-width: 900px)").matches && S.expanded) $("form").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  $("chips").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-f]"); if (!b) return;
+    S.filter = b.dataset.f; S.showAll = false; selectTab("cot"); renderChips(); renderTable();
+  });
+  let qT; $("q").addEventListener("input", (e) => { clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value; S.showAll = false; renderTable(); }, 120); });
+  $("sort").addEventListener("change", (e) => { S.sort = e.target.value; renderTable(); });
+
+  $("tbody-sem").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-cad]"); if (!b) return;
+    selectTab("cot"); resetForm();
+    $("f-num").value = b.dataset.cad; $("f-desc").value = b.dataset.desc; $("f-valor").value = N2.format(Number(b.dataset.val));
+    updateValorPrev(); updateCheck(); $("f-desc").focus();
+  });
+
+  // ---------- abas ----------
+  function selectTab(t) {
+    for (const n of ["cot", "conf", "sem"]) { $("tab-" + n).setAttribute("aria-selected", String(n === t)); $("view-" + n).hidden = n !== t; }
+    try { localStorage.setItem("cc-tab", t); } catch {}
+  }
+  for (const n of ["cot", "conf", "sem"]) $("tab-" + n).addEventListener("click", () => selectTab(n));
+  try { const t = localStorage.getItem("cc-tab"); if (t === "conf" || t === "sem") selectTab(t); } catch {}
+
+  // ---------- importação ----------
+  let WB = null, WBname = "";
+  const colName = (i) => XLSX.utils.encode_col(i);
+  function sheetRows(name) { return XLSX.utils.sheet_to_json(WB.Sheets[name], { header: 1, raw: true, defval: null, blankrows: true }); }
+
+  function guessHeader(rows) {
+    for (let i = 0; i < Math.min(rows.length, 40); i++) {
+      const cells = (rows[i] || []).map((c) => String(c ?? "").toUpperCase());
+      if (cells.some((c) => /COTA/.test(c)) && cells.some((c) => /VALOR/.test(c))) return i;
+    }
+    return 0;
+  }
+  function fillCols() {
+    const rows = sheetRows($("i-sheet").value);
+    const hdr = Math.max(0, (parseInt($("i-header").value, 10) || 1) - 1);
+    const head = rows[hdr] || [];
+    const width = Math.max(head.length, ...rows.slice(hdr, hdr + 50).map((r) => r?.length || 0));
+    const opts = ['<option value="">—</option>'];
+    for (let i = 0; i < width; i++) opts.push(`<option value="${i}">${colName(i)} · ${esc(String(head[i] ?? "").slice(0, 40))}</option>`);
+    for (const id of ["i-c-num", "i-c-val", "i-c-item", "i-c-desc"]) $(id).innerHTML = opts.join("");
+    const H = head.map((c) => String(c ?? "").toUpperCase());
+    const find = (...res) => { for (const re of res) { const i = H.findIndex((c) => re.test(c)); if (i >= 0) return String(i); } return ""; };
+    $("i-c-num").value = find(/N.{0,3}COTA/, /COTA/);
+    $("i-c-val").value = find(/VALOR CONTRATADO/, /VALOR/);
+    $("i-c-item").value = find(/^ITEM/, /ITEM/);
+    $("i-c-desc").value = find(/DESCRI.*CONTRAT/, /DESCRI/);
+    preview();
+  }
+
+  let pending = null;
+  function preview() {
+    pending = null; $("i-go").disabled = true;
+    if (!WB) return;
+    const cn = $("i-c-num").value, cv = $("i-c-val").value;
+    if (cn === "" || cv === "") { $("i-msg").textContent = "Escolha as colunas do nº da cotação e do valor."; return; }
+    const ci = $("i-c-item").value, cd = $("i-c-desc").value;
+    const rows = sheetRows($("i-sheet").value);
+    const hdr = Math.max(0, (parseInt($("i-header").value, 10) || 1) - 1);
+    const out = [];
+    let total = 0;
+    for (const r of rows.slice(hdr + 1)) {
+      if (!r) continue;
+      const n = r[+cn];
+      if (n == null || String(n).trim() === "") continue;
+      let v = r[+cv];
+      if (typeof v === "string") { const p = parseValor(v); v = p.valor ?? 0; }
+      v = Number(v) || 0;
+      total += v;
+      out.push([typeof n === "number" ? String(n) : String(n).trim(), Math.round(v * 100) / 100,
+        ci === "" ? "" : String(r[+ci] ?? "").trim(), cd === "" ? "" : String(r[+cd] ?? "").trim()]);
+    }
+    if (!out.length) { $("i-msg").textContent = "Nenhuma linha com nº de cotação nessa coluna."; return; }
+    pending = { rows: out, total: Math.round(total * 100) / 100, aba: $("i-sheet").value };
+    $("i-msg").className = "msg";
+    $("i-msg").textContent = `${out.length} lançamentos encontrados, total ${fmt(pending.total)}.`;
+    $("i-go").disabled = !S.db;
+  }
+
+  $("i-file").addEventListener("change", async (ev) => {
+    const f = ev.target.files?.[0]; if (!f) return;
+    $("i-msg").className = "msg"; $("i-msg").textContent = "Lendo arquivo…";
+    try {
+      const buf = await f.arrayBuffer();
+      WB = XLSX.read(buf, { type: "array" }); WBname = f.name;
+      const names = WB.SheetNames;
+      $("i-sheet").innerHTML = names.map((n) => `<option>${esc(n)}</option>`).join("");
+      const best = names.find((n) => /CONFER|OR[CÇ]/i.test(n) && !/RESUMO/i.test(n)) || names[0];
+      $("i-sheet").value = best;
+      $("i-header").value = guessHeader(sheetRows(best)) + 1;
+      $("i-map").hidden = false;
+      fillCols();
+    } catch { WB = null; $("i-msg").className = "msg err"; $("i-msg").textContent = "Não consegui ler esse arquivo. Salve como .xlsx e tente de novo."; }
+  });
+  $("i-sheet").addEventListener("change", () => { $("i-header").value = guessHeader(sheetRows($("i-sheet").value)) + 1; fillCols(); });
+  $("i-header").addEventListener("change", fillCols);
+  for (const id of ["i-c-num", "i-c-val", "i-c-item", "i-c-desc"]) $(id).addEventListener("change", preview);
+
+  $("i-go").addEventListener("click", async () => {
+    if (!pending || !S.db) return;
+    const btn = $("i-go"); btn.disabled = true;
+    const msg = $("i-msg"); msg.className = "msg";
+    const parts = [];
+    for (let i = 0; i < pending.rows.length; i += PART_SIZE) parts.push(pending.rows.slice(i, i + PART_SIZE));
+    const oldParts = S.confMeta?.partes ?? 0;
+    try {
+      for (let p = 0; p < parts.length; p++) {
+        msg.textContent = `Gravando parte ${p + 1} de ${parts.length}…`;
+        await S.db.doc("conferencia/parte-" + p).set({ rows: parts[p] });
+      }
+      await S.db.doc("config/conferencia").set({
+        arquivo: WBname, aba: pending.aba, importadoEm: new Date().toISOString(),
+        linhas: pending.rows.length, total: pending.total, partes: parts.length,
+      });
+      for (let p = parts.length; p < oldParts; p++) await S.db.doc("conferencia/parte-" + p).delete();
+      msg.textContent = `Conferência substituída: ${pending.rows.length} lançamentos.`;
+      pending = null; WB = null; $("i-map").hidden = true; $("i-file").value = "";
+    } catch (e) { msg.className = "msg err"; msg.textContent = errText(e); btn.disabled = false; }
+  });
+
+  // ---------- exportação ----------
+  $("btn-export").addEventListener("click", async () => {
+    const dl = await claude.use("downloads");
+    if (!dl) return;
+    const rows = [...D.rows].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+    const cot = [["Nº COTAÇÃO", "DESCRIÇÃO", "VALOR APROVADO", "OBSERVAÇÕES", "VALOR PLANILHA ORÇAMENTO", "VALIDAÇÃO", "DIFERENÇA"]]
+      .concat(rows.map((x) => [/^\d+$/.test(x.num) ? Number(x.num) : x.num, x.desc, x.valor, x.obs || null, x.lanc, x.st, x.dif]));
+    const conf = [["Nº COTAÇÃO", "VALOR", "ITEM", "DESCRIÇÃO DA CONTRATAÇÃO"]]
+      .concat(confRows().map((r) => [/^\d+$/.test(r[0]) ? Number(r[0]) : r[0], r[1], r[2], r[3]]));
+    const sem = [["Nº NA PLANILHA", "LANÇAMENTOS", "VALOR LANÇADO"]].concat(D.sem.map((g) => [g.k, g.linhas.length, g.total]));
+    const wb = XLSX.utils.book_new();
+    const w1 = XLSX.utils.aoa_to_sheet(cot); w1["!cols"] = [{ wch: 12 }, { wch: 48 }, { wch: 16 }, { wch: 40 }, { wch: 16 }, { wch: 18 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, w1, "COTAÇÕES");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(conf), "CONFERÊNCIA");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sem), "SEM COTAÇÃO");
+    const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const d = new Date().toISOString().slice(0, 10);
+    try { await dl.save({ filename: `RESUMO_CONCORRENCIAS_${d}.xlsx`, data: new Uint8Array(out) }); } catch {}
+  });
+
+  // ---------- banco de dados ----------
+  async function start() {
+    const db = await claude.use("db");
+    S.dbChecked = true;
+    if (!db) {
+      const n = $("notice"); n.hidden = false;
+      n.textContent = "Não foi possível abrir o banco de dados. Abra este link no claude.ai com a sua conta para ver e salvar as cotações.";
+      renderAll(); return;
+    }
+    S.db = db;
+    $("btn-save").disabled = false;
+    claude.use("downloads").then((dl) => { if (dl) $("btn-export").hidden = false; });
+    let first = true;
+    db.collection("cotacoes").limit(1000).onSnapshot((snap) => {
+      S.cot = new Map(snap.docs.map((d) => [d.id, d.data()]));
+      S.loadedCot = true;
+      if (S.editing && !S.cot.has(S.editing)) resetForm(true);
+      renderAll();
+      if (first) { first = false; if (!S.editing) resetForm(true); }
+    }, (e) => setMsg(errText(e), true));
+    db.doc("config/conferencia").onSnapshot((d) => { S.confMeta = d.exists ? d.data() : null; renderAll(); });
+    db.collection("conferencia").limit(100).onSnapshot((snap) => {
+      S.confParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []]));
+      S.loadedConf = true; renderAll();
+    });
+  }
+  renderAll();
+  (function boot(tries) {
+    if (window.claude?.use) return start();
+    if (tries < 20) return setTimeout(() => boot(tries + 1), 250);
+    S.dbChecked = true; const n = $("notice"); n.hidden = false;
+    n.textContent = "Abra este link no claude.ai com a sua conta para ver e salvar as cotações."; renderAll();
+  })(0);
+})();
+</script>
