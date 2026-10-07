@@ -321,16 +321,18 @@ dl.kv dd { margin: 0; }
   <section id="view-ped" class="grid">
     <div class="panel">
       <h2>Importar do Sienge</h2>
-      <p class="hint" style="margin:0">Envie o PDF "Saldos de Pedidos de Compra" e/ou "Saldo de Contratos". Cada um substitui a versão anterior do mesmo tipo; o que você já confirmou continua valendo.</p>
-      <label>Relatórios (PDF) <input type="file" id="ped-file" accept="application/pdf,.pdf" multiple></label>
+      <p class="hint" style="margin:0">Escolha um ou mais relatórios de uma vez; o site reconhece cada um. Cada relatório substitui a versão anterior do mesmo tipo e o que você já confirmou continua valendo.</p>
+      <ul class="hint" style="margin:0;padding-left:18px">
+        <li>Saldos de Pedidos de Compra (PDF)</li>
+        <li>Saldo de Contratos (PDF)</li>
+        <li>Relação de Pedidos de Compra (Excel): itens de cada pedido</li>
+        <li>Títulos por Data (Excel): notas</li>
+        <li>Extrato do Fornecedor (Excel): medições e liberações dos contratos</li>
+      </ul>
+      <label>Relatórios <input type="file" id="ped-file" accept=".pdf,.xlsx,.xls" multiple></label>
       <div class="msg" id="ped-imp-msg" role="status"></div>
       <div class="row"><button class="btn primary" type="button" id="ped-go" disabled>Importar</button></div>
       <dl class="kv" id="ped-info"></dl>
-      <h2 style="margin-top:6px">Itens dos pedidos <span class="hint">(opcional)</span></h2>
-      <p class="hint" style="margin:0">Relatório "Relação de Pedidos de Compra" em Excel: mostra os itens de cada pedido para você conferir a ligação.</p>
-      <label>Relação de Pedidos (Excel) <input type="file" id="it-file" accept=".xlsx,.xls"></label>
-      <div class="row"><button class="btn" type="button" id="it-go">Importar itens</button></div>
-      <div class="msg" id="it-msg" role="status"></div>
       <p class="hint" style="margin:0">A ligação é automática só quando o valor bate ao centavo com um único documento (e, para valores redondos, a data também confirma). O resto vira sugestão para você confirmar.</p>
     </div>
     <div style="display:grid; gap:10px; min-width:0">
@@ -347,17 +349,9 @@ dl.kv dd { margin: 0; }
   <section class="summary" id="nf-summary" aria-label="Resumo das notas"></section>
   <section id="view-nf" class="grid">
     <div class="panel">
-      <h2>Importar do Sienge</h2>
-      <p class="hint" style="margin:0">Envie o relatório "Títulos por Data" em Excel (.xlsx). Ele substitui a versão anterior.</p>
-      <label>Relatório (Excel) <input type="file" id="nf-file" accept=".xlsx,.xls"></label>
-      <div class="msg" id="nf-msg" role="status"></div>
-      <div class="row"><button class="btn primary" type="button" id="nf-go">Importar</button></div>
+      <h2>Relatórios</h2>
+      <p class="hint" style="margin:0">Importe no módulo 2, em "Importar do Sienge" (Títulos por Data, Extrato do Fornecedor e os demais).</p>
       <dl class="kv" id="nf-info"></dl>
-      <h2 style="margin-top:6px">Contratos <span class="hint">(opcional)</span></h2>
-      <p class="hint" style="margin:0">Relatório "Extrato do Fornecedor" em Excel: medições, liberações, caução e aditivos de cada contrato. Liga também as notas lançadas sem o nº do contrato.</p>
-      <label>Extrato do Fornecedor (Excel) <input type="file" id="ex-file" accept=".xlsx,.xls"></label>
-      <div class="row"><button class="btn" type="button" id="ex-go">Importar extrato</button></div>
-      <div class="msg" id="ex-msg" role="status"></div>
       <p class="hint" style="margin:0">Notas = NF, NF-e, NFS-e, fatura, recibo, nota de débito e cupom. Guias de imposto e caução aparecem à parte e não entram no faturado. Uma nota com dois pedidos é dividida entre eles pelo valor entregue.</p>
     </div>
     <div style="display:grid; gap:10px; min-width:0">
@@ -2069,12 +2063,17 @@ ${eap.txt}`;
     const ord = (a, b) => (a.c.ordem ?? 0) - (b.c.ordem ?? 0);
     return { ok: ok.sort(ord), sug: sug.sort(ord), sem: sem.sort(ord), just: just.sort(ord), canc: canc.sort(ord), livres, errados };
   }
+  function relInfo() {
+    const q = (m) => m ? `${new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : `<span class="hint">não importado</span>`;
+    return [["Saldos de pedidos", S.docMeta.PC, (m) => `${m.n} · ${fmt(m.soma)}`], ["Saldos de contratos", S.docMeta.CT, (m) => `${m.n} · ${fmt(m.soma)}`],
+      ["Itens dos pedidos", S.itMeta, (m) => `${m.n} pedidos`], ["Títulos (notas)", S.nfMeta, (m) => `${m.n} · ${fmt(m.soma)}`], ["Extrato dos contratos", S.exMeta, (m) => `${m.n} contratos`]]
+      .map(([l, m, f]) => `<dt>${l}</dt><dd>${m ? `${f(m)} · ${q(m)}` : q(m)}</dd>`).join("");
+  }
   function renderPed() {
     const box = $("ped-list"); if (!box) return;
     if (S.docMeta.PC || S.docMeta.CT) fillDocList();
     const temDocs = S.docMeta.PC || S.docMeta.CT;
-    $("ped-info").innerHTML = ["PC", "CT"].map((t) => { const m = S.docMeta[t];
-      return `<dt>${t === "PC" ? "Pedidos" : "Contratos"}</dt><dd>${m ? `${m.n} · ${fmt(m.soma)} · ${new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : "não importado"}</dd>`; }).join("");
+    $("ped-info").innerHTML = relInfo();
     if (!temDocs) { box.innerHTML = `<div class="empty">Importe o relatório de pedidos de compra e/ou o de contratos do Sienge (PDF) para ligar cada cotação ao seu pedido.</div>`; $("ped-summary").innerHTML = ""; $("mod-s-ped").textContent = "Pedidos e contratos do Sienge"; return; }
     const L = pedLists();
     const soma = (arr, f) => arr.reduce((t, x) => t + (Number(f(x)) || 0), 0);
@@ -2195,25 +2194,55 @@ ${eap.txt}`;
 
   // ---- importação dos relatórios ----
   let pedPend = [];
+  // Importação única: reconhece cada relatório do Sienge (PDF de saldos; Excel de itens, títulos e extrato)
+  const XL_TIPOS = {
+    itens: { nome: "Itens dos pedidos", coll: "itens", meta: "config/itens", metaKey: "itMeta" },
+    titulos: { nome: "Títulos (notas)", coll: "nf", meta: "config/nf", metaKey: "nfMeta" },
+    extrato: { nome: "Extrato dos contratos", coll: "extrato", meta: "config/extrato", metaKey: "exMeta" },
+  };
+  async function lerXlsx(f) {
+    const wb = XLSX.read(await f.arrayBuffer(), { type: "array" });
+    const topo = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" }).slice(0, 15).map((r) => r.join(" ")).join(" ");
+    if (/Relação de Pedidos de Compra/i.test(topo)) { const { rows } = parseRelPedidos(wb); return { kind: "itens", rows, resumo: `${rows.length} pedidos, ${rows.reduce((t, r) => t + r[7].length, 0)} itens` }; }
+    if (/Extrato do Fornecedor/i.test(topo)) { const rows = parseExtrato(wb); return { kind: "extrato", rows, resumo: `${rows.length} contratos, ${rows.reduce((t, r) => t + r[6].length, 0)} medições, ${rows.reduce((t, r) => t + r[7].length, 0)} liberações` }; }
+    if (/T[ií]tulos por Data/i.test(topo) || /CT\/OC/.test(topo)) {
+      const { rows, total } = parseTitulos(wb);
+      const soma = Math.round(rows.reduce((t, r) => t + (r[7] || 0), 0) * 100) / 100;
+      if (total != null && Math.abs(total - soma) > 0.05) return { erro: `a soma lida (${fmt(soma)}) não bate com o total do relatório (${fmt(total)})` };
+      return { kind: "titulos", rows, extra: { soma, total }, resumo: `${rows.length} títulos, ${fmt(soma)}${total != null ? " (confere com o total do relatório)" : ""}` };
+    }
+    return { erro: "não reconheci este relatório" };
+  }
+  async function gravarPartes(t, f, rows, extra = {}) {
+    const enc = new TextEncoder(), partes = []; let cur = [], tam = 0; // limite do banco: 256 KB por documento
+    for (const r of rows) { const n = enc.encode(JSON.stringify(r)).length + 1; if (tam + n > 180000 && cur.length) { partes.push(cur); cur = []; tam = 0; } cur.push(r); tam += n; }
+    if (cur.length) partes.push(cur);
+    const old = S[t.metaKey]?.partes ?? 0;
+    for (let i = 0; i < partes.length; i++) await S.db.doc(`${t.coll}/parte-${i}`).set({ rows: partes[i] });
+    await S.db.doc(t.meta).set({ arquivo: f.name, importadoEm: new Date().toISOString(), n: rows.length, partes: partes.length, ...extra });
+    for (let i = partes.length; i < old; i++) await S.db.doc(`${t.coll}/parte-${i}`).delete();
+  }
   $("ped-file").addEventListener("change", async (ev) => {
     const files = [...(ev.target.files || [])]; ev.target.value = "";
     const m = $("ped-imp-msg"); m.className = "msg"; m.textContent = "Lendo…"; pedPend = [];
-    try {
-      if (!window.pdfjsLib) throw new Error("pdf");
-      for (const f of files) {
+    for (const f of files) {
+      try {
+        if (/\.xlsx?$/i.test(f.name)) { const r = await lerXlsx(f); pedPend.push({ f, ...r }); continue; }
+        if (!window.pdfjsLib) throw new Error("pdf");
         const r = parseSienge(await pdfLines(f));
-        if (!r.tipo) { pedPend.push({ f, erro: "Não reconheci este relatório. Use 'Saldos de Pedidos de Compra' ou 'Saldo de Contratos' do Sienge." }); continue; }
+        if (!r.tipo) { pedPend.push({ f, erro: "não reconheci este relatório" }); continue; }
         pedPend.push({ f, ...r });
-      }
-    } catch { m.className = "msg err"; m.textContent = "Não consegui ler o PDF. Recarregue a página e tente de novo."; return; }
-    m.innerHTML = pedPend.map((p) => p.erro ? `<div class="neg">${esc(p.f.name)}: ${esc(p.erro)}</div>` :
-      `<div><b>${p.tipo === "PC" ? "Pedidos" : "Contratos"}</b> (${esc(p.f.name)}): ${p.docs.length} encontrados, soma ${fmt(p.soma)}. ` +
+      } catch (e) { pedPend.push({ f, erro: e?.message && !/^pdf$/.test(e.message) ? e.message : "não consegui ler o arquivo" }); }
+    }
+    m.innerHTML = pedPend.map((p) => p.erro ? `<div class="neg">${esc(p.f.name)}: ${esc(p.erro)}.</div>` : p.kind ? `<div><b>${XL_TIPOS[p.kind].nome}</b> (${esc(p.f.name)}): ${esc(p.resumo)}.</div>` :
+      `<div><b>${p.tipo === "PC" ? "Saldos de pedidos" : "Saldos de contratos"}</b> (${esc(p.f.name)}): ${p.docs.length} encontrados, soma ${fmt(p.soma)}. ` +
       (p.total == null ? `<span class="hint">Total do relatório não encontrado.</span>` : Math.abs(p.total - p.soma) < 0.05 ? `<span style="color:var(--ok)">Confere com o total do relatório (${fmt(p.total)}).</span>` : `<span class="neg">Não confere com o total do relatório (${fmt(p.total)}): confira o arquivo.</span>`) +
       (p.erros.length ? ` <span class="neg">${p.erros.length} linha(s) não lida(s).</span>` : "") + `</div>`).join("");
-    $("ped-go").disabled = !pedPend.some((p) => p.docs?.length);
+    $("ped-go").disabled = !pedPend.some((p) => p.docs?.length || p.rows?.length);
   });
   $("ped-go").addEventListener("click", async () => {
     const m = $("ped-imp-msg"), b = $("ped-go"); b.disabled = true;
+    if (!S.db) { m.innerHTML += `<div class="neg">Banco de dados indisponível.</div>`; return; }
     try {
       for (const p of pedPend.filter((x) => x.docs?.length)) {
         const rows = p.docs.map((d) => [d.num, d.data, d.forn, d.prim, d.sec, d.sit, d.saldo]);
@@ -2223,30 +2252,12 @@ ${eap.txt}`;
         await S.db.doc(`config/docs-${p.tipo}`).set({ arquivo: p.f.name, importadoEm: new Date().toISOString(), n: rows.length, soma: p.soma, total: p.total, partes: parts.length });
         for (let i = parts.length; i < old; i++) await S.db.doc(`docs/${p.tipo}-${i}`).delete();
       }
-      m.innerHTML += `<div style="color:var(--ok)">Importado. As ligações foram recalculadas; o que você já confirmou ou recusou foi mantido.</div>`;
+      for (const p of pedPend.filter((x) => x.kind && x.rows?.length)) await gravarPartes(XL_TIPOS[p.kind], p.f, p.rows, p.extra);
+      m.innerHTML += `<div style="color:var(--ok)">Importado. Tudo foi recalculado; o que você já confirmou ou recusou foi mantido.</div>`;
       pedPend = [];
-    } catch (e) { m.innerHTML += `<div class="neg">${esc(errText(e))}</div>`; b.disabled = false; }
+    } catch (e) { m.innerHTML += `<div class="neg">${esc(e?.code ? errText(e) : (e?.message || String(e)))}</div>`; b.disabled = false; }
   });
 
-  $("it-go").addEventListener("click", async () => {
-    const f = $("it-file").files[0], m = $("it-msg"), b = $("it-go");
-    if (!f) { m.className = "msg err"; m.textContent = "Escolha o arquivo primeiro."; return; }
-    if (!S.db) { m.className = "msg err"; m.textContent = "Banco de dados indisponível."; return; }
-    b.disabled = true; m.className = "msg"; m.textContent = "Lendo o arquivo…";
-    try {
-      const { rows } = parseRelPedidos(XLSX.read(await f.arrayBuffer(), { type: "array" }));
-      if (!rows.length) throw new Error("Nenhum pedido encontrado no arquivo.");
-      const enc = new TextEncoder(), partes = []; let cur = [], tam = 0; // limite do banco: 256 KB por documento
-      for (const r of rows) { const n = enc.encode(JSON.stringify(r)).length + 1; if (tam + n > 180000 && cur.length) { partes.push(cur); cur = []; tam = 0; } cur.push(r); tam += n; }
-      if (cur.length) partes.push(cur);
-      const old = S.itMeta?.partes ?? 0;
-      for (let i = 0; i < partes.length; i++) { m.textContent = `Gravando parte ${i + 1} de ${partes.length}…`; await S.db.doc(`itens/parte-${i}`).set({ rows: partes[i] }); }
-      await S.db.doc("config/itens").set({ arquivo: f.name, importadoEm: new Date().toISOString(), n: rows.length, itens: rows.reduce((t, r) => t + r[7].length, 0), partes: partes.length });
-      for (let i = partes.length; i < old; i++) await S.db.doc(`itens/parte-${i}`).delete();
-      m.className = "msg"; m.innerHTML = `<span style="color:var(--ok)">Importado: ${rows.length} pedidos, ${rows.reduce((t, r) => t + r[7].length, 0)} itens.</span>`;
-    } catch (e) { m.className = "msg err"; m.textContent = e?.code ? errText(e) : (e?.message || String(e)); }
-    b.disabled = false;
-  });
 
   // Extrato do Fornecedor (contratos): [id, fornecedor, valor, início, término, aditivos, medições, liberações, total medido, caução, total liberado]
   //   medição: [nº, data, total dos itens, reajuste, total bruto, caução]; liberação: [documento, vencimento, bruto, impostos, desconto, líquido]
@@ -2276,25 +2287,6 @@ ${eap.txt}`;
     return out;
   }
   function exRows() { const out = []; for (let i = 0; i < (S.exMeta?.partes ?? 0); i++) out.push(...(S.exParts.get(`parte-${i}`) || [])); return out; }
-  $("ex-go").addEventListener("click", async () => {
-    const f = $("ex-file").files[0], m = $("ex-msg"), b = $("ex-go");
-    if (!f) { m.className = "msg err"; m.textContent = "Escolha o arquivo primeiro."; return; }
-    if (!S.db) { m.className = "msg err"; m.textContent = "Banco de dados indisponível."; return; }
-    b.disabled = true; m.className = "msg"; m.textContent = "Lendo o arquivo…";
-    try {
-      const rows = parseExtrato(XLSX.read(await f.arrayBuffer(), { type: "array" }));
-      if (!rows.length) throw new Error("Nenhum contrato encontrado no arquivo.");
-      const enc = new TextEncoder(), partes = []; let cur = [], tam = 0; // limite do banco: 256 KB por documento
-      for (const r of rows) { const n = enc.encode(JSON.stringify(r)).length + 1; if (tam + n > 180000 && cur.length) { partes.push(cur); cur = []; tam = 0; } cur.push(r); tam += n; }
-      if (cur.length) partes.push(cur);
-      const old = S.exMeta?.partes ?? 0;
-      for (let i = 0; i < partes.length; i++) await S.db.doc(`extrato/parte-${i}`).set({ rows: partes[i] });
-      await S.db.doc("config/extrato").set({ arquivo: f.name, importadoEm: new Date().toISOString(), n: rows.length, partes: partes.length });
-      for (let i = partes.length; i < old; i++) await S.db.doc(`extrato/parte-${i}`).delete();
-      m.className = "msg"; m.innerHTML = `<span style="color:var(--ok)">Importado: ${rows.length} contratos, ${rows.reduce((t, r) => t + r[6].length, 0)} medições, ${rows.reduce((t, r) => t + r[7].length, 0)} liberações.</span>`;
-    } catch (e) { m.className = "msg err"; m.textContent = e?.code ? errText(e) : (e?.message || String(e)); }
-    b.disabled = false;
-  });
 
   // ---------- Pedido × Nota fiscal (relatório "Títulos por Data" do Sienge) ----------
   // linha guardada: [título, credor, documento, origem, CT/OC, emissão, vencimento, bruto, imposto, líquido]
@@ -2421,8 +2413,8 @@ ${eap.txt}`;
   function renderNf() {
     const box = $("nf-list"); if (!box) return;
     const m = S.nfMeta;
-    $("nf-info").innerHTML = `<dt>Títulos</dt><dd>${m ? `${m.n} · ${fmt(m.soma)} · ${new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : "não importado"}</dd>`;
-    if (!m) { box.innerHTML = `<div class="empty">Importe o relatório "Títulos por Data" do Sienge (Excel).</div>`; $("nf-summary").innerHTML = ""; $("mod-s-nf").textContent = "Notas do Sienge"; return; }
+    $("nf-info").innerHTML = relInfo();
+    if (!m) { box.innerHTML = `<div class="empty">Importe o relatório "Títulos por Data" (Excel) no módulo 2, em "Importar do Sienge".</div>`; $("nf-summary").innerHTML = ""; $("mod-s-nf").textContent = "Notas do Sienge"; return; }
     if (!(S.docMeta.PC || S.docMeta.CT)) { box.innerHTML = `<div class="empty">Importe também os pedidos e contratos no módulo 2.</div>`; $("nf-summary").innerHTML = ""; return; }
     const A = nfAnalise();
     const soma = (l, f) => A ? l.reduce((t, x) => t + (f(x) || 0), 0) : 0;
@@ -2489,28 +2481,6 @@ ${eap.txt}`;
   $("nf-summary").addEventListener("click", (ev) => { const b = ev.target.closest("[data-nf]"); if (!b) return; S.nfF = b.dataset.nf; try { localStorage.setItem("cc-nff", S.nfF); } catch {} renderNf(); });
   $("nf-q").addEventListener("input", () => renderNf());
 
-  $("nf-go").addEventListener("click", async () => {
-    const f = $("nf-file").files[0], m = $("nf-msg"), b = $("nf-go");
-    if (!f) { m.className = "msg err"; m.textContent = "Escolha o arquivo primeiro."; return; }
-    if (!/\.xlsx?$/i.test(f.name)) { m.className = "msg err"; m.textContent = 'Use o relatório em Excel (.xlsx): no Sienge, exporte "Títulos por Data" para Excel.'; return; }
-    if (!S.db) { m.className = "msg err"; m.textContent = "Banco de dados indisponível."; return; }
-    b.disabled = true; m.className = "msg"; m.textContent = "Lendo o arquivo…";
-    try {
-      const { rows, total } = parseTitulos(XLSX.read(await f.arrayBuffer(), { type: "array" }));
-      if (!rows.length) throw new Error("Nenhum título encontrado no arquivo.");
-      const soma = Math.round(rows.reduce((t, r) => t + (r[7] || 0), 0) * 100) / 100;
-      if (total != null && Math.abs(total - soma) > 0.05) throw new Error(`A soma lida (${fmt(soma)}) não bate com o total do relatório (${fmt(total)}). Nada foi gravado.`);
-      const enc = new TextEncoder(), partes = []; let cur = [], tam = 0; // limite do banco: 256 KB por documento
-      for (const r of rows) { const n = enc.encode(JSON.stringify(r)).length + 1; if (tam + n > 180000 && cur.length) { partes.push(cur); cur = []; tam = 0; } cur.push(r); tam += n; }
-      if (cur.length) partes.push(cur);
-      const old = S.nfMeta?.partes ?? 0;
-      for (let i = 0; i < partes.length; i++) { m.textContent = `Gravando parte ${i + 1} de ${partes.length}…`; await S.db.doc(`nf/parte-${i}`).set({ rows: partes[i] }); }
-      await S.db.doc("config/nf").set({ arquivo: f.name, importadoEm: new Date().toISOString(), n: rows.length, soma, total, partes: partes.length });
-      for (let i = partes.length; i < old; i++) await S.db.doc(`nf/parte-${i}`).delete();
-      m.className = "msg"; m.innerHTML = `<span style="color:var(--ok)">Importado: ${rows.length} títulos, ${fmt(soma)}${total != null ? " (bate com o total do relatório)" : ""}.</span>`;
-    } catch (e) { m.className = "msg err"; m.textContent = e?.code ? errText(e) : (e?.message || String(e)); }
-    b.disabled = false;
-  });
 
   // ---------- banco de dados ----------
   async function start() {
@@ -2544,9 +2514,9 @@ ${eap.txt}`;
     });
     db.doc("config/itens").onSnapshot((d) => { S.itMeta = d.exists ? d.data() : null; S.itMap = null; renderPed(); renderNf(); });
     db.collection("itens").limit(100).onSnapshot((snap) => { S.itParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.itMap = null; renderPed(); renderNf(); });
-    db.doc("config/extrato").onSnapshot((d) => { S.exMeta = d.exists ? d.data() : null; S.exVer++; renderNf(); });
+    db.doc("config/extrato").onSnapshot((d) => { S.exMeta = d.exists ? d.data() : null; S.exVer++; renderPed(); renderNf(); });
     db.collection("extrato").limit(100).onSnapshot((snap) => { S.exParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.exVer++; renderNf(); });
-    db.doc("config/nf").onSnapshot((d) => { S.nfMeta = d.exists ? d.data() : null; S.nfVer++; renderNf(); });
+    db.doc("config/nf").onSnapshot((d) => { S.nfMeta = d.exists ? d.data() : null; S.nfVer++; renderPed(); renderNf(); });
     db.collection("nf").limit(100).onSnapshot((snap) => { S.nfParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.nfVer++; renderNf(); });
     db.doc("config/elos").onSnapshot((d) => { S.elos = d.exists ? d.data() : { links: [], rej: [] }; renderAll(); });
     db.collection("eap").limit(100).onSnapshot((snap) => {
