@@ -72,7 +72,16 @@ header p { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
 .sticky { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px);
   max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px);
   overflow-y: auto; overscroll-behavior: contain; padding-bottom: 4px; }
-@media (max-width: 900px) { .sticky { position: static; max-height: none; overflow: visible; } }
+/* Coluna da lista: mesma altura da tela; só a tabela rola, com o cabeçalho parado */
+.listcol { display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px);
+  height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px); }
+.listcol .tablebox { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+@media (max-width: 900px) {
+  .sticky { position: static; max-height: none; overflow: visible; }
+  .listcol { position: static; height: auto; }
+  .listcol .tablebox { overflow-y: visible; }
+}
 
 label { display: grid; gap: 4px; font-size: .8rem; font-weight: 600; color: var(--muted); }
 input, textarea, select { font: inherit; font-size: .92rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%; min-width: 0; }
@@ -197,7 +206,7 @@ dl.kv dd { margin: 0; }
     </form>
     </div>
 
-    <div style="display:grid; gap:10px; min-width:0">
+    <div class="listcol">
       <div class="toolbar">
         <input id="q" type="search" placeholder="Buscar por nº, descrição ou observação">
         <select id="sort" aria-label="Ordenar por">
