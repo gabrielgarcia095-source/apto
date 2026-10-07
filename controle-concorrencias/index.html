@@ -681,7 +681,7 @@ dl.kv dd { margin: 0; }
   function errText(e) {
     const c = e?.code;
     if (c === "quota_exceeded") return "O banco de dados está cheio. Exclua cotações antigas para continuar.";
-    if (c === "invalid_argument") return "Você não tem permissão para salvar aqui.";
+    if (c === "invalid_argument") return "O banco recusou a gravação (dado grande demais ou sem permissão).";
     if (c === "resource_exhausted") return "Muitas gravações seguidas. Espere alguns segundos e tente de novo.";
     return "Não foi possível salvar agora. Tente de novo em instantes.";
   }
@@ -2190,7 +2190,8 @@ ${eap.txt}`;
         }
       }
       const partes = []; let cur = [], tam = 0;
-      for (const l of linhas) { if (tam + l.length > 400000 && cur.length) { partes.push(cur); cur = []; tam = 0; } cur.push(l); tam += l.length + 8; }
+      const enc = new TextEncoder(); // limite do banco: 256 KB por documento
+      for (const l of linhas) { const n = enc.encode(JSON.stringify(l)).length + 1; if (tam + n > 180000 && cur.length) { partes.push(cur); cur = []; tam = 0; } cur.push(l); tam += n; }
       if (cur.length) partes.push(cur);
       let old = 0; try { old = (await S.db.doc("config/nfraw").get())?.data?.()?.partes ?? 0; } catch { old = 0; }
       for (let i = 0; i < partes.length; i++) { m.textContent = `Enviando parte ${i + 1} de ${partes.length}…`; await S.db.doc(`nfraw/parte-${i}`).set({ linhas: partes[i] }); }
