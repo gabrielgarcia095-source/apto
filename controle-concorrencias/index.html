@@ -119,6 +119,10 @@ td.obs { color: var(--muted); font-size: .82rem; max-width: 260px; }
 dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: .86rem; }
 dl.kv dt { color: var(--muted); }
 dl.kv dd { margin: 0; }
+.qc-card { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 6px; font-size: .86rem; background: var(--bg); }
+.qc-card .big { font-family: var(--font-num); font-size: 1.05rem; }
+.qc-card ul { margin: 0; padding-left: 18px; }
+.qc-warn { background: var(--warn-bg); border-radius: 6px; padding: 6px 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -153,7 +157,14 @@ dl.kv dd { margin: 0; }
 
   <!-- ABA COTAÇÕES -->
   <section id="view-cot" class="grid">
-    <form class="panel sticky" id="form" autocomplete="off">
+    <div class="sticky" style="display:grid; gap:12px; align-content:start; min-width:0">
+    <section class="panel" id="qc-panel" hidden>
+      <h2>Ler QC em PDF</h2>
+      <p class="hint" style="margin:0">Envie o Quadro de Concorrência. O Claude lê o nº, o vencedor e o valor aprovado. Você confere antes de salvar.</p>
+      <label>Arquivo do QC <input type="file" id="qc-file" accept="application/pdf,.pdf"></label>
+      <div id="qc-out" role="status"></div>
+    </section>
+    <form class="panel" id="form" autocomplete="off">
       <div class="row" style="justify-content:space-between">
         <h2 id="form-title">Nova cotação</h2>
         <button class="btn" type="button" id="btn-cancel" hidden>Cancelar</button>
@@ -179,16 +190,18 @@ dl.kv dd { margin: 0; }
       </div>
       <div class="msg" id="f-msg" role="status"></div>
     </form>
+    </div>
 
     <div style="display:grid; gap:10px; min-width:0">
       <div class="toolbar">
         <input id="q" type="search" placeholder="Buscar por nº, descrição ou observação">
-        <select id="sort" aria-label="Ordenar">
+        <select id="sort" aria-label="Ordenar por">
           <option value="ordem">Ordem de cadastro</option>
-          <option value="recente">Mais recentes primeiro</option>
-          <option value="valor">Maior valor aprovado</option>
-          <option value="dif">Maior diferença</option>
+          <option value="num">Nº da cotação</option>
+          <option value="valor">Valor aprovado</option>
+          <option value="dif">Diferença</option>
         </select>
+        <button class="btn" type="button" id="sort-dir" aria-label="Inverter ordem">↑ Crescente</button>
       </div>
       <div class="tablebox">
         <table>
@@ -242,6 +255,8 @@ dl.kv dd { margin: 0; }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -324,7 +339,7 @@ dl.kv dd { margin: 0; }
     vinc: {},                 // id do lançamento -> { cot, desc }
     semOpen: null,
     loadedCot: false, loadedConf: false,
-    filter: "TODOS", q: "", sort: "ordem",
+    filter: "TODOS", q: "", sort: "ordem", desc: false,
     editing: null, expanded: null, showAll: false,
   };
   let D = { rows: [], confBy: new Map(), sem: [], counts: {}, keyCount: new Map() };
@@ -405,13 +420,22 @@ dl.kv dd { margin: 0; }
     const q = S.q.trim().toLowerCase();
     let r = D.rows.filter((x) => (S.filter === "TODOS" || x.st === S.filter) &&
       (!q || String(x.num).toLowerCase().includes(q) || (x.desc || "").toLowerCase().includes(q) || (x.obs || "").toLowerCase().includes(q)));
+    // Nº: números primeiro (pelo valor), depois códigos de texto em ordem alfabética
+    const numCmp = (a, b) => {
+      const na = /^\d+$/.test(a.k) ? +a.k : null, nb = /^\d+$/.test(b.k) ? +b.k : null;
+      if (na != null && nb != null) return na - nb;
+      if (na != null) return -1;
+      if (nb != null) return 1;
+      return a.k.localeCompare(b.k, "pt-BR");
+    };
     const by = {
       ordem: (a, b) => (a.ordem ?? 0) - (b.ordem ?? 0),
-      recente: (a, b) => (b.ordem ?? 0) - (a.ordem ?? 0),
-      valor: (a, b) => (b.valor ?? -1) - (a.valor ?? -1),
-      dif: (a, b) => Math.abs(b.dif ?? 0) - Math.abs(a.dif ?? 0),
+      num: numCmp,
+      valor: (a, b) => (a.valor ?? -1) - (b.valor ?? -1),
+      dif: (a, b) => Math.abs(a.dif ?? 0) - Math.abs(b.dif ?? 0),
     }[S.sort];
-    return r.sort(by);
+    r.sort(by);
+    return S.desc ? r.reverse() : r;
   }
 
   function detailHtml(x) {
@@ -596,7 +620,11 @@ dl.kv dd { margin: 0; }
     S.filter = b.dataset.f; S.showAll = false; selectTab("cot"); renderChips(); renderTable();
   });
   let qT; $("q").addEventListener("input", (e) => { clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value; S.showAll = false; renderTable(); }, 120); });
-  $("sort").addEventListener("change", (e) => { S.sort = e.target.value; renderTable(); });
+  function syncDir() { $("sort-dir").textContent = S.desc ? "↓ Decrescente" : "↑ Crescente"; }
+  $("sort").addEventListener("change", (e) => {
+    S.sort = e.target.value; S.desc = S.sort === "valor" || S.sort === "dif"; syncDir(); renderTable();
+  });
+  $("sort-dir").addEventListener("click", () => { S.desc = !S.desc; syncDir(); renderTable(); });
 
   $("tbody-sem").addEventListener("click", (ev) => {
     const b = ev.target.closest("[data-cad]"); if (!b) return;
@@ -764,6 +792,131 @@ dl.kv dd { margin: 0; }
     try { await dl.save({ filename: `RESUMO_CONCORRENCIAS_${d}.xlsx`, data: new Uint8Array(out) }); } catch {}
   });
 
+  // ---------- QC em PDF ----------
+  // O worker do pdf.js roda na própria página (carregado pela tag de script), sem Worker separado.
+  async function readPdf(file) {
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    const pages = [], images = [];
+    for (let p = 1; p <= Math.min(pdf.numPages, 2); p++) {
+      const page = await pdf.getPage(p);
+      const base = page.getViewport({ scale: 1 });
+      const tc = await page.getTextContent();
+      // Linhas: agrupa por altura, separa colunas distantes com " | "
+      const items = tc.items.filter((it) => it.str && it.str.trim()).map((it) => ({ s: it.str, x: it.transform[4], y: it.transform[5], w: it.width }));
+      const lines = new Map();
+      for (const it of items) { const k = Math.round(it.y / 3); (lines.get(k) || lines.set(k, []).get(k)).push(it); }
+      const txt = [...lines.entries()].sort((a, b) => b[0] - a[0]).map(([, l]) => {
+        l.sort((a, b) => a.x - b.x); let out = "", end = null;
+        for (const it of l) { out += end == null ? it.s : (it.x - end > 6 ? " | " : " ") + it.s; end = it.x + it.w; }
+        return out;
+      }).join("\n");
+      pages.push(txt);
+      // Imagem: só a área com conteúdo, em alta resolução, mais as duas metades
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const it of items) { x0 = Math.min(x0, it.x); x1 = Math.max(x1, it.x + it.w); y0 = Math.min(y0, it.y); y1 = Math.max(y1, it.y + 12); }
+      if (!isFinite(x0)) { x0 = 0; x1 = base.width; y0 = 0; y1 = base.height; }
+      const scale = Math.min(4, 3000 / Math.max(1, x1 - x0));
+      const vp = page.getViewport({ scale });
+      const cv = document.createElement("canvas"); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+      await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+      const pad = 10 * scale;
+      const cx = Math.max(0, x0 * scale - pad), cw = Math.min(cv.width, x1 * scale + pad) - cx;
+      const cy = Math.max(0, (base.height - y1) * scale - pad), ch = Math.min(cv.height, (base.height - y0) * scale + pad) - cy;
+      const crop = async (sx, sw) => {
+        const c = document.createElement("canvas"); c.width = Math.round(sw); c.height = Math.round(ch);
+        const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(cv, sx, cy, sw, ch, 0, 0, c.width, c.height);
+        return new Promise((res) => c.toBlob(res, "image/png"));
+      };
+      images.push(await crop(cx, cw));
+      if (p === 1) { images.push(await crop(cx, cw * 0.55)); images.push(await crop(cx + cw * 0.45, cw * 0.55)); }
+    }
+    return { text: pages.join("\n\n--- página ---\n\n").slice(0, 60000), images };
+  }
+
+  const QC_PROMPT = (name, text) => `Você está lendo um Quadro de Concorrência (QC) de compras de uma obra. Preciso do número da cotação, da descrição, de quem venceu e do valor aprovado.
+
+Existem dois modelos de QC:
+- Modelo A: há uma linha "RESULTADO" e a palavra "VENCEDOR" (célula verde) aparece em cima da coluna do fornecedor vencedor. O valor é o TOTAL dessa coluna.
+- Modelo B: na linha "TOTAIS", o total do fornecedor vencedor está com FUNDO VERDE. Outras cores (laranja, amarelo) NÃO indicam vencedor.
+Ignore colunas de referência como "MENORES VALORES", "MIN.", "UNIT. MIN.", "TOTAL MIN." e "REFERÊNCIA ORÇAMENTO": não são fornecedores.
+Se houver mais de um vencedor (por exemplo itens divididos entre fornecedores, com células verdes em itens diferentes), liste todos; o total aprovado é a SOMA do que cada vencedor levou.
+O número e a descrição costumam estar em "SOLICITAÇÃO: 493 - LOUÇAS" ou "COTAÇÃO: 480 - DISJUNTORES", ou no nome do arquivo.
+As imagens são o QC inteiro e depois as metades esquerda e direita ampliadas. Use as imagens para ver as cores e o texto abaixo para os números exatos.
+Se algo estiver ambíguo (nenhuma marcação verde, marcação em mais de um lugar sem ficar claro, valores que não batem), explique em "duvida". Se estiver claro, "duvida" é null.
+
+Responda só com JSON neste formato (números com ponto decimal):
+{"numero":"493","descricao":"LOUÇAS","vencedores":[{"fornecedor":"ICASA","valor":39735.00,"como_identificou":"VENCEDOR em cima da coluna"}],"total":39735.00,"duvida":null}
+
+Nome do arquivo: ${name}
+
+Texto extraído do PDF (colunas separadas por " | "):
+${text}`;
+
+  let qcResult = null, qcCtl = null;
+  function renderQc(html) { $("qc-out").innerHTML = html; }
+  function qcErr(e) {
+    const c = e?.code;
+    if (c === "not_granted" || c === "sampling_disabled") return "Você não permitiu que esta página use o Claude. Libere em Permissões do artifact para usar esta função.";
+    if (c === "rate_limited") return "Limite de uso do Claude atingido agora. Tente de novo em alguns minutos.";
+    if (c === "invalid_json") return "O Claude não devolveu uma resposta legível. Tente enviar o arquivo de novo.";
+    if (c === "image_rejected" || c === "images_unavailable") return "Não consegui enviar a imagem do PDF. Tente de novo.";
+    return "Não consegui ler esse QC agora. Tente de novo.";
+  }
+
+  $("qc-file").addEventListener("change", async (ev) => {
+    const f = ev.target.files?.[0]; if (!f) return;
+    const sample = await claude.use("sample"); if (!sample) return;
+    qcCtl?.abort(); qcCtl = new AbortController(); const ctl = qcCtl;
+    qcResult = null;
+    renderQc(`<div class="qc-card"><span>Lendo o PDF…</span></div>`);
+    try {
+      if (!window.pdfjsLib) throw { code: "pdf" };
+      const { text, images } = await readPdf(f);
+      const lim = await sample.limits().catch(() => null);
+      const max = lim?.images?.maxCount ?? 0;
+      renderQc(`<div class="qc-card"><span>O Claude está analisando o QC… (pode levar até 1 minuto)</span><button class="btn" type="button" id="qc-stop">Parar</button></div>`);
+      const r = await sample.json(QC_PROMPT(f.name, text), { images: max ? images.slice(0, max) : undefined, signal: ctl.signal });
+      const venc = Array.isArray(r?.vencedores) ? r.vencedores.map((v) => ({ fornecedor: String(v.fornecedor ?? ""), valor: Number(v.valor) || 0, como: String(v.como_identificou ?? "") })) : [];
+      const soma = Math.round(venc.reduce((t, v) => t + v.valor, 0) * 100) / 100;
+      const total = Number(r?.total);
+      qcResult = { numero: String(r?.numero ?? "").trim(), descricao: String(r?.descricao ?? "").trim(), venc, total: venc.length ? soma : (isFinite(total) ? total : null), duvida: r?.duvida ? String(r.duvida) : null, arquivo: f.name };
+      if (venc.length && isFinite(total) && Math.abs(total - soma) > 0.05 && !qcResult.duvida)
+        qcResult.duvida = `O total informado (${fmt(total)}) não bate com a soma dos vencedores (${fmt(soma)}). Usei a soma.`;
+      const ex = [...S.cot.values()].find((c) => key(c.num) === key(qcResult.numero));
+      renderQc(`<div class="qc-card">
+        <div><span class="eyebrow">Cotação</span><br><b class="num">${esc(qcResult.numero || "?")}</b> · ${esc(qcResult.descricao || "sem descrição")}</div>
+        <div><span class="eyebrow">${venc.length > 1 ? "Vencedores" : "Vencedor"}</span><ul>${venc.map((v) => `<li>${esc(v.fornecedor)}: <span class="num">${fmt(v.valor)}</span>${v.como ? ` <span class="hint">(${esc(v.como)})</span>` : ""}</li>`).join("") || "<li>Nenhum vencedor identificado</li>"}</ul></div>
+        <div><span class="eyebrow">Valor aprovado</span><br><span class="big">${fmt(qcResult.total)}</span></div>
+        ${qcResult.duvida ? `<div class="qc-warn"><b>Dúvida:</b> ${esc(qcResult.duvida)}</div>` : ""}
+        <div class="hint">${ex ? `Já existe a cotação ${esc(ex.num)} (“${esc(ex.desc)}”). O valor será colocado nela.` : "Não existe cotação com esse nº. Será criada uma nova."}</div>
+        <div class="row"><button class="btn primary" type="button" id="qc-use"${qcResult.total == null ? " disabled" : ""}>Preencher formulário</button><button class="btn" type="button" id="qc-clear">Descartar</button></div>
+      </div>`);
+    } catch (e) {
+      if (e?.code === "cancelled") renderQc("");
+      else renderQc(`<div class="qc-card"><span class="msg err">${e?.code === "pdf" ? "O leitor de PDF não carregou. Recarregue a página." : esc(qcErr(e))}</span></div>`);
+    } finally { ev.target.value = ""; }
+  });
+
+  $("qc-out").addEventListener("click", (ev) => {
+    if (ev.target.closest("#qc-stop")) { qcCtl?.abort(); return; }
+    if (ev.target.closest("#qc-clear")) { qcResult = null; renderQc(""); return; }
+    if (!ev.target.closest("#qc-use") || !qcResult) return;
+    const q = qcResult;
+    selectTab("cot");
+    const ex = [...S.cot.entries()].find(([, c]) => key(c.num) === key(q.numero));
+    const quem = q.venc.map((v) => v.fornecedor).filter(Boolean).join("; ");
+    const nota = quem ? `${q.venc.length > 1 ? "Vencedores" : "Vencedor"}: ${quem} (QC ${q.arquivo})` : `QC ${q.arquivo}`;
+    if (ex) { editRow(ex[0]); S.expanded = ex[0]; renderTable(); } else resetForm();
+    if (!ex) { $("f-num").value = q.numero; $("f-desc").value = q.descricao; }
+    $("f-valor").value = q.venc.length > 1 ? q.venc.map((v) => N2.format(v.valor)).join(" + ") : N2.format(q.total);
+    const obs = $("f-obs").value.trim();
+    $("f-obs").value = obs ? `${obs} · ${nota}` : nota;
+    updateValorPrev(); updateCheck();
+    setMsg("Confira os dados e clique em Salvar.");
+    $("form").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
   // ---------- banco de dados ----------
   async function start() {
     const db = await claude.use("db");
@@ -776,6 +929,7 @@ dl.kv dd { margin: 0; }
     S.db = db;
     $("btn-save").disabled = false;
     claude.use("downloads").then((dl) => { if (dl) $("btn-export").hidden = false; });
+    claude.use("sample").then((sm) => { if (sm) $("qc-panel").hidden = false; });
     let first = true;
     db.collection("cotacoes").limit(1000).onSnapshot((snap) => {
       S.cot = new Map(snap.docs.map((d) => [d.id, d.data()]));
