@@ -656,7 +656,10 @@ dl.kv dd { margin: 0; }
       WB = XLSX.read(buf, { type: "array" }); WBname = f.name;
       const names = WB.SheetNames;
       $("i-sheet").innerHTML = names.map((n) => `<option>${esc(n)}</option>`).join("");
-      const best = names.find((n) => /CONFER|OR[CÇ]/i.test(n) && !/RESUMO/i.test(n)) || names[0];
+      const hasCols = (n) => { const r = sheetRows(n); const h = r[guessHeader(r)] || []; return h.some((c) => /COTA/i.test(c ?? "")) && h.some((c) => /VALOR/i.test(c ?? "")); };
+      const best = names.find((n) => /LAN[CÇ]AMENTO/i.test(n))
+        || names.find((n) => /CONFER/i.test(n) && !/RESUMO/i.test(n))
+        || names.find(hasCols) || names[0];
       $("i-sheet").value = best;
       $("i-header").value = guessHeader(sheetRows(best)) + 1;
       $("i-map").hidden = false;
