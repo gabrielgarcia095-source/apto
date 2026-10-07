@@ -326,6 +326,11 @@ dl.kv dd { margin: 0; }
       <div class="msg" id="ped-imp-msg" role="status"></div>
       <div class="row"><button class="btn primary" type="button" id="ped-go" disabled>Importar</button></div>
       <dl class="kv" id="ped-info"></dl>
+      <h2 style="margin-top:6px">Itens dos pedidos <span class="hint">(opcional)</span></h2>
+      <p class="hint" style="margin:0">Relatório "Relação de Pedidos de Compra" em Excel: mostra os itens de cada pedido para você conferir a ligação.</p>
+      <label>Relação de Pedidos (Excel) <input type="file" id="it-file" accept=".xlsx,.xls"></label>
+      <div class="row"><button class="btn" type="button" id="it-go">Importar itens</button></div>
+      <div class="msg" id="it-msg" role="status"></div>
       <p class="hint" style="margin:0">A ligação é automática só quando o valor bate ao centavo com um único documento (e, para valores redondos, a data também confirma). O resto vira sugestão para você confirmar.</p>
     </div>
     <div style="display:grid; gap:10px; min-width:0">
@@ -447,6 +452,7 @@ dl.kv dd { margin: 0; }
     qcPending: null,
     sugDraft: {},
     docMeta: { PC: null, CT: null }, docParts: { PC: new Map(), CT: new Map() }, docVer: 0, elos: null,
+    itMeta: null, itParts: new Map(), itMap: null,
     nfMeta: null, nfParts: new Map(), nfVer: 0, nfF: (() => { try { return localStorage.getItem("cc-nff") || "div"; } catch { return "div"; } })(),
     pedF: (() => { try { return localStorage.getItem("cc-pedf") || "sug"; } catch { return "sug"; } })(),             // edições da sugestão de uma cotação salva, ainda não gravadas          // leitura do QC que vai junto quando a cotação for salva
     semOpen: null,
@@ -1888,7 +1894,38 @@ ${eap.txt}`;
     const lbl2 = d.tipo === "CT" ? "medido" : "entregue";
     return `<b>${esc(d.id)}</b> · ${esc(d.forn)} · ${esc(d.data)} · <span class="num">${fmt(d.prim)}</span>` +
       ` <span class="hint">(${lbl2} <span class="num">${fmt(d.sec)}</span>)</span> <span class="pill ${sitCls(d.sit)}">${esc(d.sit)}</span>` +
-      (semEntrega(d) ? ` <span class="pill s-DIVERGENCIA">nada ${lbl2}</span>` : saldoCanc(d) > 0.009 ? ` <span class="hint neg">saldo cancelado ${fmt(saldoCanc(d))}</span>` : "");
+      (semEntrega(d) ? ` <span class="pill s-DIVERGENCIA">nada ${lbl2}</span>` : saldoCanc(d) > 0.009 ? ` <span class="hint neg">saldo cancelado ${fmt(saldoCanc(d))}</span>` : "") + itensBox(d);
+  }
+  // itens do pedido (relatório "Relação de Pedidos de Compra"): [nº, data, comprador, frete, outras, desconto, total, [[insumo, qtd, un, preço, valor, qt entregue]]]
+  function itensOf(d) {
+    if (d.tipo !== "PC" || !S.itMeta) return null;
+    if (!S.itMap) { S.itMap = new Map(); for (let i = 0; i < (S.itMeta.partes ?? 0); i++) for (const r of S.itParts.get(`parte-${i}`) || []) S.itMap.set(String(r[0]), r); }
+    return S.itMap.get(String(d.num)) || null;
+  }
+  function itensBox(d) {
+    const p = itensOf(d); if (!p || !p[7]?.length) return "";
+    const it = p[7], resumo = it.slice(0, 3).map((x) => x[0]).join("; ");
+    return `<details class="itens"><summary class="hint">${it.length} ${it.length > 1 ? "itens" : "item"}: ${esc(resumo.length > 90 ? resumo.slice(0, 90) + "…" : resumo)}${it.length > 3 ? "…" : ""}${p[2] ? ` · comprador ${esc(p[2])}` : ""}</summary>` +
+      it.slice(0, 40).map((x) => `<div class="hint">${esc(x[0])} — ${x[1]} ${esc(x[2])} × ${fmt(x[3])} = <span class="num">${fmt(x[1] * x[4])}</span>${x[5] < x[1] ? ` · entregue ${x[5]}` : ""}</div>`).join("") +
+      (it.length > 40 ? `<div class="hint">… e mais ${it.length - 40}</div>` : "") + (p[3] || p[4] ? `<div class="hint">frete ${fmt(p[3])} · outras despesas ${fmt(p[4])}</div>` : "") + `</details>`;
+  }
+  function parseRelPedidos(wb) {
+    const A = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
+    if (!A.slice(0, 6).some((r) => r.some((v) => /Relação de Pedidos de Compra/i.test(String(v))))) throw new Error('Este arquivo não é a "Relação de Pedidos de Compra".');
+    const out = []; let cur = null, data = "", comp = "", col = null, total = null;
+    const num = (v) => typeof v === "number" ? v : (parseValor(String(v ?? "")).valor || 0);
+    for (const r of A) {
+      const k = String(r[0]).trim();
+      const at = (lbl) => { const i = r.findIndex((v) => String(v).trim() === lbl); return i < 0 ? "" : r.slice(i + 1).find((v) => String(v).trim() !== "") ?? ""; };
+      if (k === "Data") { data = xlDate(at("Data")); comp = String(at("Comprador")).trim(); }
+      else if (k === "Pedido") { cur = [String(at("Pedido")).trim(), data, comp, 0, 0, 0, 0, []]; out.push(cur); col = null; }
+      else if (k === "Desconto" && cur) { cur[5] = num(at("Desconto")); cur[4] = num(at("Outras despesas")); cur[3] = num(at("Total do frete")); }
+      else if (k === "Total do pedido" && cur) cur[6] = num(at("Total do pedido"));
+      else if (k === "Insumo") { col = {}; r.forEach((v, i) => { const t = String(v).trim(); if (t && !(t in col)) col[t] = i; }); }
+      else if (/^Total entregue dos pedidos/i.test(k)) total = num(r.slice(1).find((v) => String(v).trim() !== ""));
+      else if (cur && col && /^\d+\s*-\s*/.test(k)) cur[7].push([k.replace(/^\d+\s*-\s*/, "").replace(/\s+/g, " ").trim(), num(r[col["Quantidade"]]), String(r[col["Un."]] ?? "").trim(), num(r[col["Preço"]]), num(r[col["Valor líquido"]]), num(r[col["Qt. entregue"]])]);
+    }
+    return { rows: out, total };
   }
   // documento dividido entre cotações: quanto as cotações somam e quanto do documento sobra sem cotação
   function partesTxt(d) {
@@ -2186,6 +2223,26 @@ ${eap.txt}`;
     } catch (e) { m.innerHTML += `<div class="neg">${esc(errText(e))}</div>`; b.disabled = false; }
   });
 
+  $("it-go").addEventListener("click", async () => {
+    const f = $("it-file").files[0], m = $("it-msg"), b = $("it-go");
+    if (!f) { m.className = "msg err"; m.textContent = "Escolha o arquivo primeiro."; return; }
+    if (!S.db) { m.className = "msg err"; m.textContent = "Banco de dados indisponível."; return; }
+    b.disabled = true; m.className = "msg"; m.textContent = "Lendo o arquivo…";
+    try {
+      const { rows } = parseRelPedidos(XLSX.read(await f.arrayBuffer(), { type: "array" }));
+      if (!rows.length) throw new Error("Nenhum pedido encontrado no arquivo.");
+      const enc = new TextEncoder(), partes = []; let cur = [], tam = 0; // limite do banco: 256 KB por documento
+      for (const r of rows) { const n = enc.encode(JSON.stringify(r)).length + 1; if (tam + n > 180000 && cur.length) { partes.push(cur); cur = []; tam = 0; } cur.push(r); tam += n; }
+      if (cur.length) partes.push(cur);
+      const old = S.itMeta?.partes ?? 0;
+      for (let i = 0; i < partes.length; i++) { m.textContent = `Gravando parte ${i + 1} de ${partes.length}…`; await S.db.doc(`itens/parte-${i}`).set({ rows: partes[i] }); }
+      await S.db.doc("config/itens").set({ arquivo: f.name, importadoEm: new Date().toISOString(), n: rows.length, itens: rows.reduce((t, r) => t + r[7].length, 0), partes: partes.length });
+      for (let i = partes.length; i < old; i++) await S.db.doc(`itens/parte-${i}`).delete();
+      m.className = "msg"; m.innerHTML = `<span style="color:var(--ok)">Importado: ${rows.length} pedidos, ${rows.reduce((t, r) => t + r[7].length, 0)} itens.</span>`;
+    } catch (e) { m.className = "msg err"; m.textContent = e?.code ? errText(e) : (e?.message || String(e)); }
+    b.disabled = false;
+  });
+
   // ---------- Pedido × Nota fiscal (relatório "Títulos por Data" do Sienge) ----------
   // linha guardada: [título, credor, documento, origem, CT/OC, emissão, vencimento, bruto, imposto, líquido]
   const NF_COLS = ["Titulo", "Credor", "Documento", "Or", "CT/OC", "Emis.NF", "Vencto", "Valor bruto", "Imposto", "Valor líquido"];
@@ -2405,6 +2462,8 @@ ${eap.txt}`;
       for (const d of snap.docs) { const t = d.id.slice(0, 2); if (S.docParts[t]) S.docParts[t].set(d.id, d.data().rows || []); }
       S.docVer++; renderAll(); fillDocList();
     });
+    db.doc("config/itens").onSnapshot((d) => { S.itMeta = d.exists ? d.data() : null; S.itMap = null; renderPed(); renderNf(); });
+    db.collection("itens").limit(100).onSnapshot((snap) => { S.itParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.itMap = null; renderPed(); renderNf(); });
     db.doc("config/nf").onSnapshot((d) => { S.nfMeta = d.exists ? d.data() : null; S.nfVer++; renderNf(); });
     db.collection("nf").limit(100).onSnapshot((snap) => { S.nfParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.nfVer++; renderNf(); });
     db.doc("config/elos").onSnapshot((d) => { S.elos = d.exists ? d.data() : { links: [], rej: [] }; renderAll(); });
