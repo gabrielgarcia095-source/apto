@@ -130,6 +130,14 @@ dl.kv dd { margin: 0; }
 .qc-card { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 6px; font-size: .86rem; background: var(--bg); }
 .qc-card .big { font-family: var(--font-num); font-size: 1.05rem; }
 .qc-card ul { margin: 0; padding-left: 18px; }
+.sug { overflow-x: auto; }
+.sug table { min-width: 560px; }
+.sug th, .sug td { font-size: .8rem; padding: 4px 6px; position: static; background: transparent; }
+.sug .code { font-family: var(--font-num); font-size: .72rem; color: var(--muted); display: block; }
+.neg { color: var(--bad); }
+.sug input { font-size: .8rem; padding: 4px 6px; }
+.sug input.bad { border-color: var(--bad); background: var(--bad-bg); }
+.sug td.del { width: 1%; }
 .qc-warn { background: var(--warn-bg); border-radius: 6px; padding: 6px 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -142,7 +150,8 @@ dl.kv dd { margin: 0; }
       <p>Cadastre cada cotação aprovada. O site compara com a planilha de orçamento importada e mostra o que já foi lançado, o que falta e onde o valor diverge.</p>
     </div>
     <div class="row">
-      <button class="btn" id="btn-export" type="button" hidden>Baixar planilha (.xlsx)</button>
+      <button class="btn primary" id="btn-falta" type="button" hidden>Baixar o que falta lançar (.xlsx)</button>
+      <button class="btn" id="btn-export" type="button" hidden>Baixar planilha completa (.xlsx)</button>
     </div>
   </header>
 
@@ -263,6 +272,7 @@ dl.kv dd { margin: 0; }
   </section>
 </div>
 
+<datalist id="eap-dl"></datalist>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
@@ -346,6 +356,9 @@ dl.kv dd { margin: 0; }
     confMeta: null,
     confParts: new Map(),     // "parte-N" -> rows [nº, valor, item, descrição, id]
     vinc: {},                 // id do lançamento -> { cot, desc }
+    eapMeta: null, eapParts: new Map(),  // EAP: [código, pai, descrição, un, qtd, orçado, contratado]
+    qcPending: null,
+    sugDraft: {},             // edições da sugestão de uma cotação salva, ainda não gravadas          // leitura do QC que vai junto quando a cotação for salva
     semOpen: null,
     loadedCot: false, loadedConf: false,
     filter: "TODOS", q: "", sort: "ordem", desc: false,
@@ -359,6 +372,15 @@ dl.kv dd { margin: 0; }
     for (let p = 0; p < n; p++) { const r = S.confParts.get("parte-" + p); if (r) out.push(...r); }
     return out;
   }
+
+  function eapRows() {
+    const n = S.eapMeta?.partes ?? 0, out = [];
+    for (let p = 0; p < n; p++) { const r = S.eapParts.get("parte-" + p); if (r) out.push(...r); }
+    return out;
+  }
+  // Item onde se lança = nível mais detalhado da EAP (mãe.sub.item, ex. #02.01.04.01.25.02.03)
+  const isLeaf = (code) => (String(code).match(/\./g) || []).length >= 6;
+  function eapMap() { const m = new Map(); for (const r of eapRows()) m.set(r[0], r); return m; }
 
   function compute() {
     // Lançamento vinculado à mão (por ID + descrição) vale como se tivesse o nº da cotação
@@ -452,7 +474,15 @@ dl.kv dd { margin: 0; }
     const extra = [];
     if (x.formula) extra.push(`Valor calculado de: <span class="num">${esc(x.formula)}</span>`);
     if ((D.keyCount.get(x.k) || 0) > 1) extra.push(`<span class="dup">Há mais de uma cotação com o nº ${esc(x.num)}: a conferência usa a soma delas.</span>`);
-    const head = extra.length ? `<div class="hint" style="margin-bottom:6px">${extra.join(" · ")}</div>` : "";
+    let head = extra.length ? `<div class="hint" style="margin-bottom:6px">${extra.join(" · ")}</div>` : "";
+    if (x.qc) {
+      const q = x.qc;
+      head += `<div class="qc-card" style="margin-bottom:10px"><div><span class="eyebrow">QC guardado</span> <span class="hint">${esc(q.arquivo || "")} · lido em ${q.lidoEm ? new Date(q.lidoEm).toLocaleDateString("pt-BR") : "—"}</span></div>` +
+        `<div>${(q.vencedores || []).map((v) => `${esc(v.fornecedor)}: <span class="num">${fmt(v.valor)}</span>`).join(" · ")}</div>` +
+        `<div><span class="eyebrow">Onde lançar na planilha de orçamento</span>${editorHtml(x.id, sugSource(x.id) || [], x.num, x.valor)}</div>` +
+        (q.duvidaEap ? `<div class="qc-warn"><b>Dúvida na EAP:</b> ${esc(q.duvidaEap)}</div>` : "") +
+        `</div>`;
+    }
     if (!g) return head + `<div class="hint">Nenhum lançamento com o nº ${esc(x.num)} na planilha de orçamento.</div>`;
     return head + `<table><thead><tr><th>Item do orçamento</th><th>Descrição da contratação</th><th class="r">Valor</th><th></th></tr></thead><tbody>` +
       g.linhas.map((l) => `<tr><td>${esc(l[2])}</td><td>${esc(l[3])}</td><td class="r num">${fmt(Number(l[1]) || 0)}</td>` +
@@ -510,7 +540,8 @@ dl.kv dd { margin: 0; }
     $("conf-info").innerHTML = m
       ? `<dt>Arquivo</dt><dd>${esc(m.arquivo || "—")}</dd><dt>Aba</dt><dd>${esc(m.aba || "—")}</dd>` +
         `<dt>Importado em</dt><dd>${new Date(m.importadoEm).toLocaleString("pt-BR")}</dd>` +
-        `<dt>Lançamentos</dt><dd class="num">${m.linhas}</dd><dt>Total</dt><dd class="num">${fmt(m.total)}</dd>`
+        `<dt>Lançamentos</dt><dd class="num">${m.linhas}</dd><dt>Total</dt><dd class="num">${fmt(m.total)}</dd>` +
+        `<dt>EAP</dt><dd>${S.eapMeta ? `${S.eapMeta.itens} itens · ${new Date(S.eapMeta.importadoEm).toLocaleDateString("pt-BR")}` : "não importada"}</dd>`
       : `<dt>Situação</dt><dd>Nenhuma importação ainda.</dd>`;
   }
 
@@ -545,7 +576,7 @@ dl.kv dd { margin: 0; }
   }
 
   function resetForm(keepMsg) {
-    S.editing = null;
+    S.editing = null; S.qcPending = null;
     $("form-title").textContent = "Nova cotação";
     $("f-num").value = S.cot.size ? nextNum() : "";
     $("f-desc").value = ""; $("f-valor").value = ""; $("f-obs").value = "";
@@ -557,7 +588,7 @@ dl.kv dd { margin: 0; }
 
   function editRow(id) {
     const c = S.cot.get(id); if (!c) return;
-    S.editing = id;
+    S.editing = id; S.qcPending = null;
     $("form-title").textContent = "Editar cotação " + c.num;
     $("f-num").value = c.num ?? "";
     $("f-desc").value = c.desc ?? "";
@@ -588,7 +619,8 @@ dl.kv dd { margin: 0; }
     const old = S.editing ? S.cot.get(S.editing) : null;
     let ordem = old?.ordem;
     if (ordem == null) { ordem = 0; for (const c of S.cot.values()) ordem = Math.max(ordem, c.ordem || 0); ordem++; }
-    const data = { num, desc, valor: pv.valor, formula: pv.formula, obs, ordem, atualizadoEm: new Date().toISOString() };
+    const data = { num, desc, valor: pv.valor, formula: pv.formula, obs, ordem, atualizadoEm: new Date().toISOString(),
+      qc: S.qcPending || old?.qc || null };
     $("btn-save").disabled = true;
     try {
       const ref = S.editing ? S.db.collection("cotacoes").doc(S.editing) : S.db.collection("cotacoes").doc();
@@ -758,6 +790,22 @@ dl.kv dd { margin: 0; }
   $("i-header").addEventListener("change", fillCols);
   for (const id of ["i-c-num", "i-c-val", "i-c-item", "i-c-desc", "i-c-id"]) $(id).addEventListener("change", preview);
 
+  // Aba EAP: acha o cabeçalho (EAP, EAP PAI, DESCRIÇÃO...) e guarda [código, pai, descrição, un, qtd, orçado, contratado]
+  function parseEap(rows) {
+    const hi = rows.findIndex((r) => r && r.some((c) => String(c ?? "").trim().toUpperCase() === "EAP") && r.some((c) => /DESCRI/i.test(String(c ?? ""))));
+    if (hi < 0) return [];
+    const H = rows[hi].map((c) => String(c ?? "").trim().toUpperCase());
+    const col = (re) => H.findIndex((c) => re.test(c));
+    const cCode = H.indexOf("EAP"), cPai = col(/^EAP PAI/), cDesc = col(/DESCRI/), cUn = col(/^UN/), cQtd = col(/QUANT/), cTot = col(/C\.?\s*TOTAL/), cCon = col(/CONTRATADO/);
+    const out = [];
+    for (const r of rows.slice(hi + 1)) {
+      const code = String(r?.[cCode] ?? "").trim(); if (!code.startsWith("#")) continue;
+      const g = (i) => (i < 0 ? null : r[i] ?? null);
+      out.push([code, String(g(cPai) ?? ""), String(g(cDesc) ?? "").trim(), g(cUn), g(cQtd), Math.round((Number(g(cTot)) || 0) * 100) / 100, Math.round((Number(g(cCon)) || 0) * 100) / 100]);
+    }
+    return out;
+  }
+
   $("i-go").addEventListener("click", async () => {
     if (!pending || !S.db) return;
     const btn = $("i-go"); btn.disabled = true;
@@ -775,12 +823,44 @@ dl.kv dd { margin: 0; }
         linhas: pending.rows.length, total: pending.total, partes: parts.length,
       });
       for (let p = parts.length; p < oldParts; p++) await S.db.doc("conferencia/parte-" + p).delete();
-      msg.textContent = `Conferência substituída: ${pending.rows.length} lançamentos.`;
+      let eapMsg = "";
+      const eapSheet = WB && WB.SheetNames.find((n) => /^EAP$/i.test(n.trim()));
+      if (eapSheet) {
+        const eap = parseEap(sheetRows(eapSheet));
+        if (eap.length) {
+          const ep = []; for (let i = 0; i < eap.length; i += PART_SIZE) ep.push(eap.slice(i, i + PART_SIZE));
+          const oldE = S.eapMeta?.partes ?? 0;
+          for (let p = 0; p < ep.length; p++) await S.db.doc("eap/parte-" + p).set({ rows: ep[p] });
+          await S.db.doc("config/eap").set({ arquivo: WBname, importadoEm: new Date().toISOString(), linhas: eap.length, itens: eap.filter((r) => isLeaf(r[0])).length, partes: ep.length });
+          for (let p = ep.length; p < oldE; p++) await S.db.doc("eap/parte-" + p).delete();
+          eapMsg = ` EAP atualizada: ${eap.filter((r) => isLeaf(r[0])).length} itens.`;
+        }
+      }
+      msg.textContent = `Conferência substituída: ${pending.rows.length} lançamentos.${eapMsg}`;
       pending = null; WB = null; $("i-map").hidden = true; $("i-file").value = "";
     } catch (e) { msg.className = "msg err"; msg.textContent = errText(e); btn.disabled = false; }
   });
 
   // ---------- exportação ----------
+  // Só as cotações que ainda não aparecem na planilha de orçamento, no formato da aba LANÇAMENTOS
+  $("btn-falta").addEventListener("click", async () => {
+    const dl = await claude.use("downloads"); if (!dl) return;
+    const head = ["ITEM", "DESCRIÇÃO DA CONTRATAÇÃO", "Nº COTAÇÃO", "VALOR CONTRATADO", "CÓDIGO EAP", "MACRO ITEM", "SUB ITEM", "OBSERVAÇÃO"];
+    const out = [head];
+    const falta = D.rows.filter((x) => x.st === "FALTA LANÇAR").sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+    for (const x of falta) {
+      const num = /^\d+$/.test(x.num) ? Number(x.num) : x.num;
+      const ls = x.qc?.lancamentos || [];
+      if (!ls.length) { out.push(["", x.desc, num, x.valor, "", "", "", "Sem sugestão de item da EAP: escolha o item na planilha"]); continue; }
+      for (const l of ls) { const p = eapPath(l.eap); out.push([l.item, l.descricao, num, Number(l.valor) || 0, l.eap, p.macro, p.sub, x.qc.confirmadoEm ? "" : "Sugestão não confirmada"]); }
+    }
+    if (out.length === 1) { setMsg("Nada para lançar: todas as cotações já estão na planilha de orçamento."); return; }
+    const ws = XLSX.utils.aoa_to_sheet(out);
+    ws["!cols"] = [{ wch: 50 }, { wch: 40 }, { wch: 12 }, { wch: 16 }, { wch: 24 }, { wch: 40 }, { wch: 40 }, { wch: 40 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "FALTA LANÇAR");
+    try { await dl.save({ filename: `FALTA_LANCAR_${new Date().toISOString().slice(0, 10)}.xlsx`, data: new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" })) }); } catch {}
+  });
+
   $("btn-export").addEventListener("click", async () => {
     const dl = await claude.use("downloads");
     if (!dl) return;
@@ -872,7 +952,128 @@ dl.kv dd { margin: 0; }
     return { text: pages.join("\n\n--- página ---\n\n").slice(0, 60000), images, colors, posInfo };
   }
 
-  const QC_PROMPT = (name, text, colors, posInfo, hasImages) => `Você está lendo um Quadro de Concorrência (QC) de compras de uma obra. Preciso do número da cotação, da descrição, de quem venceu e do valor aprovado.
+  // Linhas no formato da aba LANÇAMENTOS (colunas D a G): ITEM, DESCRIÇÃO DA CONTRATAÇÃO, Nº COTAÇÃO, VALOR
+  const plain = (v) => (Math.round(v * 100) / 100).toFixed(2).replace(".", ",");
+  function sugTsv(lancs, numero) {
+    return lancs.map((l) => [l.item, l.descricao, numero, plain(l.valor)].map((c) => String(c ?? "").replace(/[\t\n]/g, " ")).join("\t")).join("\n");
+  }
+  const leafOk = (code) => { const e = eapMap().get(code); return !!e && isLeaf(code); };
+  // Macro = EAP mãe (#02.01.04.01.25), sub = (#02.01.04.01.25.02), como as colunas B e C da aba LANÇAMENTOS
+  function eapPath(code) {
+    const em = eapMap(), seg = String(code).split(".");
+    return { macro: em.get(seg.slice(0, 5).join("."))?.[2] ?? "", sub: em.get(seg.slice(0, 6).join("."))?.[2] ?? "" };
+  }
+  // Editor da sugestão: ctx = "qc" (QC recém-lido) ou o id da cotação salva
+  function sugSource(ctx) {
+    if (ctx === "qc") return qcResult?.lancs || null;
+    const c = S.cot.get(ctx); if (!c?.qc) return null;
+    return S.sugDraft[ctx] || (c.qc.lancamentos || []);
+  }
+  function editorHtml(ctx, lancs, numero, aprovado) {
+    const em = eapMap();
+    const soma = Math.round(lancs.reduce((t, l) => t + (Number(l.valor) || 0), 0) * 100) / 100;
+    const c = ctx === "qc" ? null : S.cot.get(ctx);
+    const dirty = ctx !== "qc" && !!S.sugDraft[ctx];
+    const at = (f, i) => `data-sug-f="1" data-ctx="${esc(ctx)}" data-i="${i}" data-f="${f}"`;
+    const diff = aprovado != null && Math.abs(soma - aprovado) > 0.05;
+    return `<div class="sug"><table><thead><tr><th>Item da EAP (coluna ITEM)</th><th>Descrição da contratação</th><th class="r">Valor</th><th class="r">Saldo do item depois</th><th></th></tr></thead><tbody>` +
+      lancs.map((l, i) => {
+        const e = em.get(l.eap), ok = leafOk(l.eap);
+        const saldo = e ? (Number(e[5]) || 0) - (Number(e[6]) || 0) - (Number(l.valor) || 0) : null;
+        return `<tr><td><input list="eap-dl" ${at("eap", i)} class="${ok ? "" : "bad"}" value="${esc(l.eap ? `${l.eap} — ${l.item}` : l.item || "")}" placeholder="Busque o item da EAP">` +
+          `${ok ? "" : `<span class="hint neg">Escolha um item da lista</span>`}${l.motivo ? `<br><span class="hint">${esc(l.motivo)}</span>` : ""}</td>` +
+          `<td><input ${at("descricao", i)} value="${esc(l.descricao)}"></td>` +
+          `<td><input ${at("valor", i)} value="${esc(N2.format(Number(l.valor) || 0))}" style="text-align:right; width:8rem" inputmode="decimal"></td>` +
+          `<td class="r num${saldo != null && saldo < 0 ? " neg" : ""}">${saldo == null ? "—" : fmt(saldo)}</td>` +
+          `<td class="del"><button class="btn" type="button" data-sug-act="del" data-ctx="${esc(ctx)}" data-i="${i}" aria-label="Remover linha">×</button></td></tr>`;
+      }).join("") +
+      `<tr><td colspan="2"><b>Total</b> · Nº cotação ${esc(numero)}</td><td class="r num"><b>${fmt(soma)}</b></td>` +
+      `<td colspan="2" class="${diff ? "neg" : "hint"}">${aprovado == null ? "" : diff ? `Diferente do aprovado (${fmt(aprovado)})` : "Bate com o aprovado"}</td></tr></tbody></table></div>` +
+      `<div class="row">` +
+      `<button class="btn" type="button" data-sug-act="add" data-ctx="${esc(ctx)}">+ Linha</button>` +
+      `<button class="btn" type="button" data-sug-act="copy" data-ctx="${esc(ctx)}">Copiar para o Excel</button>` +
+      `<button class="btn" type="button" data-sug-act="xlsx" data-ctx="${esc(ctx)}">Baixar .xlsx</button>` +
+      (ctx !== "qc" ? `<button class="btn${dirty || !c?.qc?.confirmadoEm ? " primary" : ""}" type="button" data-sug-act="save" data-ctx="${esc(ctx)}">${dirty ? "Salvar alterações" : "Confirmar sugestão"}</button>` +
+        (dirty ? `<button class="btn" type="button" data-sug-act="undo" data-ctx="${esc(ctx)}">Desfazer</button>` : "") : "") +
+      `</div>` +
+      `<div class="hint">${ctx === "qc" ? "Corrija o que precisar antes de preencher o formulário." : c?.qc?.confirmadoEm ? `Confirmada em ${new Date(c.qc.confirmadoEm).toLocaleDateString("pt-BR")}.` : "Ainda não confirmada."} Para colar: coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre.</div>` +
+      `<div class="msg" id="sm-${esc(ctx)}" role="status"></div>`;
+  }
+  function rerenderSug(ctx) { if (ctx === "qc") renderQcCard(); else renderTable(); }
+
+  async function sugXlsx(lancs, numero, msgEl) {
+    const dl = await claude.use("downloads");
+    if (!dl) { if (msgEl) { msgEl.className = "msg err"; msgEl.textContent = "Download indisponível nesta visualização. Use Copiar."; } return; }
+    const head = ["ITEM", "DESCRIÇÃO DA CONTRATAÇÃO", "Nº COTAÇÃO", "VALOR CONTRATADO", "CÓDIGO EAP", "MACRO ITEM", "SUB ITEM"];
+    const rows = lancs.map((l) => { const p = eapPath(l.eap); return [l.item, l.descricao, /^\d+$/.test(numero) ? Number(numero) : numero, Number(l.valor) || 0, l.eap, p.macro, p.sub]; });
+    const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
+    ws["!cols"] = [{ wch: 50 }, { wch: 40 }, { wch: 12 }, { wch: 16 }, { wch: 24 }, { wch: 40 }, { wch: 40 }];
+    const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, ws, "LANÇAMENTOS");
+    try { await dl.save({ filename: `LANCAMENTOS_COTACAO_${String(numero).replace(/[^\w-]+/g, "_")}.xlsx`, data: new Uint8Array(XLSX.write(book, { bookType: "xlsx", type: "array" })) }); }
+    catch (e) { if (msgEl && e?.code !== "declined") { msgEl.className = "msg err"; msgEl.textContent = "Não foi possível baixar agora."; } }
+  }
+
+  function draftOf(ctx) {
+    let src = sugSource(ctx); if (!src) return null;
+    if (ctx !== "qc" && !S.sugDraft[ctx]) { S.sugDraft[ctx] = JSON.parse(JSON.stringify(src)); src = S.sugDraft[ctx]; }
+    return src;
+  }
+  document.addEventListener("change", (ev) => {
+    const t = ev.target.closest("[data-sug-f]"); if (!t) return;
+    const ctx = t.dataset.ctx, i = +t.dataset.i, f = t.dataset.f;
+    const src = draftOf(ctx); if (!src || !src[i]) return;
+    const l = src[i], v = t.value.trim();
+    if (f === "eap") {
+      const em = eapMap(); const m = v.match(/^#?\s*([\d.]+)/);
+      let code = m ? "#" + m[1].replace(/\.$/, "") : "";
+      if (!em.has(code)) { const hit = eapRows().find((r) => isLeaf(r[0]) && String(r[2]).toUpperCase() === v.toUpperCase()); code = hit ? hit[0] : ""; }
+      if (code) { l.eap = code; l.item = em.get(code)[2]; } else { l.eap = ""; l.item = v; }
+    } else if (f === "descricao") l.descricao = v.toUpperCase();
+    else if (f === "valor") { const p = parseValor(v); if (!p.erro && p.valor != null) l.valor = p.valor; }
+    rerenderSug(ctx);
+  });
+  document.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-sug-act]"); if (!b) return;
+    ev.stopPropagation();
+    const ctx = b.dataset.ctx, act = b.dataset.sugAct, msg = $("sm-" + ctx);
+    const c = ctx === "qc" ? null : S.cot.get(ctx);
+    const numero = ctx === "qc" ? qcResult?.numero : c?.num;
+    const bad = () => { if (msg) { msg.className = "msg err"; msg.textContent = "Há linhas sem item válido da EAP. Corrija antes."; } };
+    if (act === "copy" || act === "xlsx") {
+      const src = sugSource(ctx) || [];
+      if (src.some((l) => !leafOk(l.eap))) return bad();
+      if (act === "copy") copyText(sugTsv(src, numero), msg); else sugXlsx(src, numero, msg);
+      return;
+    }
+    if (act === "undo") { delete S.sugDraft[ctx]; rerenderSug(ctx); return; }
+    if (act === "save") {
+      const src = sugSource(ctx) || [];
+      if (src.some((l) => !leafOk(l.eap))) return bad();
+      try {
+        await S.db.doc("cotacoes/" + ctx).update({ qc: { lancamentos: src.map((l) => ({ eap: l.eap, item: l.item, descricao: l.descricao, valor: l.valor, itens_qc: l.itens_qc || [], motivo: l.motivo || "" })), confirmadoEm: new Date().toISOString() } });
+        delete S.sugDraft[ctx];
+      } catch (e) { if (msg) { msg.className = "msg err"; msg.textContent = errText(e); } }
+      return;
+    }
+    const src = draftOf(ctx); if (!src) return;
+    if (act === "add") src.push({ eap: "", item: "", descricao: String((ctx === "qc" ? qcResult?.descricao : c?.desc) || "").toUpperCase(), valor: 0, itens_qc: [], motivo: "" });
+    if (act === "del") src.splice(+b.dataset.i, 1);
+    rerenderSug(ctx);
+  }, true);
+
+  async function copyText(txt, msgEl) {
+    try { await navigator.clipboard.writeText(txt); if (msgEl) { msgEl.className = "msg"; msgEl.textContent = "Copiado. Cole na coluna D (ITEM) da aba LANÇAMENTOS."; } }
+    catch {
+      if (msgEl) { msgEl.className = "msg"; msgEl.innerHTML = `Não consegui copiar sozinho. Selecione o texto abaixo e copie (Ctrl+C):<textarea rows="4" readonly style="margin-top:6px">${esc(txt)}</textarea>`; msgEl.querySelector("textarea").select(); }
+    }
+  }
+
+  function eapForPrompt() {
+    // Toda a árvore: mães e subs dão o contexto, só os itens (nível mais detalhado) recebem lançamento
+    return eapRows().map((r) => `${isLeaf(r[0]) ? "ITEM" : "GRUPO"} ${r[0]} | ${r[2]}${isLeaf(r[0]) ? ` | ${r[3] ?? ""} ${r[4] ?? ""} | orçado ${plain(Number(r[5]) || 0)} | contratado ${plain(Number(r[6]) || 0)}` : ""}`).join("\n");
+  }
+
+  const QC_PROMPT = (name, text, colors, posInfo, hasImages, EAP_TXT) => `Você está lendo um Quadro de Concorrência (QC) de compras de uma obra. Preciso do número da cotação, da descrição, de quem venceu e do valor aprovado.
 
 Existem dois modelos de QC:
 - Modelo A: há uma linha "RESULTADO" e a palavra "VENCEDOR" (célula verde) aparece em cima da coluna do fornecedor vencedor. O valor é o TOTAL dessa coluna.
@@ -884,8 +1085,19 @@ ${hasImages ? "As imagens são o QC inteiro e depois as metades esquerda e direi
 Na lista de cores, cada texto tem a posição horizontal x do seu centro. Para saber de qual fornecedor é uma célula colorida, compare o x dela com o x dos nomes dos fornecedores nas LINHAS-CHAVE (o fornecedor com x mais próximo).
 Se algo estiver ambíguo (nenhuma marcação verde, marcação em mais de um lugar sem ficar claro, valores que não batem), explique em "duvida". Se estiver claro, "duvida" é null.
 
+SEGUNDA TAREFA: sugerir onde lançar o valor aprovado na planilha de orçamento.
+${EAP_TXT ? `A EAP do orçamento está no fim desta mensagem. Ela é uma árvore: GRUPO mãe (ex. #02.01.04.01.25 TAMPOS, LOUÇAS...) > GRUPO sub (ex. #02.01.04.01.25.02 LOUCAS, METAIS E ACESSORIOS) > ITEM (ex. #02.01.04.01.25.02.03 BACIA SANITARIA COM CAIXA ACOPLADA).
+O lançamento é feito SEMPRE num ITEM (o nível mais detalhado), nunca num GRUPO.
+O QC às vezes traz o código da EAP mãe (coluna "C. CUSTO" ou "ITEM DE ORÇAMENTO", ex. 02.01.04.01.25 = #02.01.04.01.25). Use-o para achar a mãe e escolha os ITENS dentro dela. Só saia dessa mãe se nenhum item dela servir, e explique.
+Para cada item que o vencedor levou no QC, escolha o ITEM da EAP que corresponde (compare descrição e quantidade; a quantidade do QC costuma ser parecida com a da EAP). Itens do QC que vão para o mesmo ITEM da EAP viram UM lançamento com a soma dos valores. Frete, impostos ou descontos cobrados à parte entram no lançamento de maior valor (diga no motivo).
+A soma dos lançamentos tem de ser igual ao total aprovado. Se algum item do QC não tiver ITEM adequado na EAP, use o mais próximo e explique em "duvida_eap".
+Em "descricao" escreva uma descrição curta da contratação em maiúsculas, com o fornecedor (ex. "LOUÇAS ICASA - BACIAS E CAIXAS ACOPLADAS").` : `Não há EAP carregada: devolva "lancamentos": [] e "duvida_eap": "EAP não importada".`}
+
 Responda só com JSON neste formato (números com ponto decimal):
-{"numero":"493","descricao":"LOUÇAS","vencedores":[{"fornecedor":"ICASA","valor":39735.00,"como_identificou":"VENCEDOR em cima da coluna"}],"total":39735.00,"duvida":null}
+{"numero":"493","descricao":"LOUÇAS","vencedores":[{"fornecedor":"ICASA","valor":39735.00,"como_identificou":"VENCEDOR em cima da coluna"}],"total":39735.00,"duvida":null,
+ "itens":[{"descricao":"BACIA PARA CAIXA ACOPLADA - BRANCO","qtd":92,"fornecedor":"ICASA","valor":14628.00}],
+ "lancamentos":[{"eap":"#02.01.04.01.25.02.03","descricao":"LOUÇAS ICASA - BACIAS E CAIXAS ACOPLADAS","valor":34078.90,"itens_qc":["BACIA PARA CAIXA ACOPLADA - BRANCO","CAIXA ACOPLADA COM MECANISMO DUO - BRANCO"],"motivo":"bacia e caixa acoplada: 92 + 2 PCD = 94 un na EAP"}],
+ "duvida_eap":null}
 
 Nome do arquivo: ${name}
 
@@ -896,9 +1108,28 @@ LINHAS-CHAVE com posição x de cada texto:
 ${posInfo.join("\n") || "nenhuma"}
 
 Texto extraído do PDF (colunas separadas por " | "):
-${text}`;
+${text}
+${EAP_TXT ? `\nEAP DO ORÇAMENTO (código | descrição | un qtd | orçado | contratado):\n${EAP_TXT}` : ""}`;
 
   let qcResult = null, qcCtl = null;
+  function renderQcCard() {
+    if (!qcResult) return;
+    const ex = [...S.cot.values()].find((c) => key(c.num) === key(qcResult.numero));
+      renderQc(`<div class="qc-card">
+        <div><span class="eyebrow">Cotação</span><br><b class="num">${esc(qcResult.numero || "?")}</b> · ${esc(qcResult.descricao || "sem descrição")}</div>
+        <div><span class="eyebrow">${qcResult.venc.length > 1 ? "Vencedores" : "Vencedor"}</span><ul>${qcResult.venc.map((v) => `<li>${esc(v.fornecedor)}: <span class="num">${fmt(v.valor)}</span>${v.como ? ` <span class="hint">(${esc(v.como)})</span>` : ""}</li>`).join("") || "<li>Nenhum vencedor identificado</li>"}</ul></div>
+        <div><span class="eyebrow">Valor aprovado</span><br><span class="big">${fmt(qcResult.total)}</span></div>
+        ${qcResult.duvida ? `<div class="qc-warn"><b>Dúvida:</b> ${esc(qcResult.duvida)}</div>` : ""}
+        <div><span class="eyebrow">Onde lançar na planilha de orçamento</span>
+          ${qcResult.semEap ? `<div class="hint">Importe o CONTROLE ORÇAMENTO (com a aba EAP) na aba "Importar conferência" para receber esta sugestão.</div>`
+            : editorHtml("qc", qcResult.lancs, qcResult.numero, qcResult.total)}
+          ${qcResult.duvidaEap ? `<div class="qc-warn"><b>Dúvida na EAP:</b> ${esc(qcResult.duvidaEap)}</div>` : ""}
+        </div>
+        <div class="hint">${ex ? `Já existe a cotação ${esc(ex.num)} (“${esc(ex.desc)}”). O valor será colocado nela.` : "Não existe cotação com esse nº. Será criada uma nova."}</div>
+        <div class="hint">Ao salvar a cotação, esta leitura do QC fica guardada nela.</div>
+        <div class="row"><button class="btn primary" type="button" id="qc-use"${qcResult.total == null ? " disabled" : ""}>Preencher formulário</button><button class="btn" type="button" id="qc-clear">Descartar</button></div>
+      </div>`);
+  }
   function renderQc(html) { $("qc-out").innerHTML = html; }
   function qcErr(e) {
     const c = e?.code;
@@ -930,23 +1161,27 @@ ${text}`;
       const { text, images, colors, posInfo } = await readPdf(f);
       const lim = await sample.limits().catch(() => null);
       const max = lim?.images?.maxCount ?? 0;
-      renderQc(`<div class="qc-card"><span>O Claude está analisando o QC… (pode levar até 1 minuto)</span><button class="btn" type="button" id="qc-stop">Parar</button></div>`);
-      const r = await sample.json(QC_PROMPT(f.name, text, colors.slice(0, 200), posInfo.slice(0, 20), max > 0), { images: max ? images.slice(0, max) : undefined, signal: ctl.signal });
+      renderQc(`<div class="qc-card"><span>O Claude está lendo o QC e procurando os itens na EAP… (pode levar 1 a 2 minutos)</span><button class="btn" type="button" id="qc-stop">Parar</button></div>`);
+      const r = await sample.json(QC_PROMPT(f.name, text, colors.slice(0, 200), posInfo.slice(0, 20), max > 0, eapForPrompt().slice(0, 150000)), { images: max ? images.slice(0, max) : undefined, signal: ctl.signal });
       const venc = Array.isArray(r?.vencedores) ? r.vencedores.map((v) => ({ fornecedor: String(v.fornecedor ?? ""), valor: Number(v.valor) || 0, como: String(v.como_identificou ?? "") })) : [];
       const soma = Math.round(venc.reduce((t, v) => t + v.valor, 0) * 100) / 100;
       const total = Number(r?.total);
-      qcResult = { numero: String(r?.numero ?? "").trim(), descricao: String(r?.descricao ?? "").trim(), venc, total: venc.length ? soma : null, duvida: r?.duvida ? String(r.duvida) : null, arquivo: f.name };
+      const em = eapMap();
+      const lancs = (Array.isArray(r?.lancamentos) ? r.lancamentos : []).map((l) => {
+        let code = String(l.eap ?? "").trim(); if (code && !code.startsWith("#")) code = "#" + code;
+        const e = em.get(code);
+        return { eap: code, item: e ? String(e[2]) : String(l.item ?? ""), descricao: String(l.descricao ?? "").trim().toUpperCase(), valor: Math.round((Number(l.valor) || 0) * 100) / 100,
+          itens_qc: Array.isArray(l.itens_qc) ? l.itens_qc.map(String).slice(0, 30) : [], motivo: String(l.motivo ?? ""), ok: !!e && isLeaf(code) };
+      });
+      const itens = (Array.isArray(r?.itens) ? r.itens : []).slice(0, 100).map((i) => ({ descricao: String(i.descricao ?? ""), qtd: Number(i.qtd) || null, fornecedor: String(i.fornecedor ?? ""), valor: Number(i.valor) || 0 }));
+      let duvidaEap = r?.duvida_eap ? String(r.duvida_eap) : null;
+      const somaL = Math.round(lancs.reduce((t, l) => t + l.valor, 0) * 100) / 100;
+      if (lancs.length && venc.length && Math.abs(somaL - soma) > 0.05) duvidaEap = (duvidaEap ? duvidaEap + " " : "") + `A soma dos lançamentos (${fmt(somaL)}) não bate com o total aprovado (${fmt(soma)}).`;
+      qcResult = { numero: String(r?.numero ?? "").trim(), descricao: String(r?.descricao ?? "").trim(), venc, total: venc.length ? soma : null, duvida: r?.duvida ? String(r.duvida) : null, arquivo: f.name,
+        itens, lancs, duvidaEap, semEap: !S.eapMeta };
       if (venc.length && isFinite(total) && Math.abs(total - soma) > 0.05 && !qcResult.duvida)
         qcResult.duvida = `O total informado (${fmt(total)}) não bate com a soma dos vencedores (${fmt(soma)}). Usei a soma.`;
-      const ex = [...S.cot.values()].find((c) => key(c.num) === key(qcResult.numero));
-      renderQc(`<div class="qc-card">
-        <div><span class="eyebrow">Cotação</span><br><b class="num">${esc(qcResult.numero || "?")}</b> · ${esc(qcResult.descricao || "sem descrição")}</div>
-        <div><span class="eyebrow">${venc.length > 1 ? "Vencedores" : "Vencedor"}</span><ul>${venc.map((v) => `<li>${esc(v.fornecedor)}: <span class="num">${fmt(v.valor)}</span>${v.como ? ` <span class="hint">(${esc(v.como)})</span>` : ""}</li>`).join("") || "<li>Nenhum vencedor identificado</li>"}</ul></div>
-        <div><span class="eyebrow">Valor aprovado</span><br><span class="big">${fmt(qcResult.total)}</span></div>
-        ${qcResult.duvida ? `<div class="qc-warn"><b>Dúvida:</b> ${esc(qcResult.duvida)}</div>` : ""}
-        <div class="hint">${ex ? `Já existe a cotação ${esc(ex.num)} (“${esc(ex.desc)}”). O valor será colocado nela.` : "Não existe cotação com esse nº. Será criada uma nova."}</div>
-        <div class="row"><button class="btn primary" type="button" id="qc-use"${qcResult.total == null ? " disabled" : ""}>Preencher formulário</button><button class="btn" type="button" id="qc-clear">Descartar</button></div>
-      </div>`);
+      renderQcCard();
     } catch (e) {
       if (e?.code === "cancelled") renderQc("");
       else renderQc(`<div class="qc-card"><span class="msg err">${e?.code === "pdf" ? "O leitor de PDF não carregou. Recarregue a página." : esc(qcErr(e))}</span></div>`);
@@ -967,8 +1202,11 @@ ${text}`;
     $("f-valor").value = q.venc.length > 1 ? q.venc.map((v) => N2.format(v.valor)).join(" + ") : N2.format(q.total);
     const obs = $("f-obs").value.trim();
     $("f-obs").value = obs ? `${obs} · ${nota}` : nota;
+    S.qcPending = { arquivo: q.arquivo, lidoEm: new Date().toISOString(), numero: q.numero,
+      vencedores: q.venc.map((v) => ({ fornecedor: v.fornecedor, valor: v.valor })), total: q.total, duvida: q.duvida,
+      itens: q.itens, lancamentos: q.lancs.map(({ ok, ...l }) => l), duvidaEap: q.duvidaEap, confirmadoEm: new Date().toISOString() };
     updateValorPrev(); updateCheck();
-    setMsg("Confira os dados e clique em Salvar.");
+    setMsg("Confira os dados e clique em Salvar. A leitura do QC será guardada junto.");
     $("form").scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
@@ -983,7 +1221,7 @@ ${text}`;
     }
     S.db = db;
     $("btn-save").disabled = false;
-    claude.use("downloads").then((dl) => { if (dl) $("btn-export").hidden = false; });
+    claude.use("downloads").then((dl) => { if (dl) { $("btn-export").hidden = false; $("btn-falta").hidden = false; } });
     claude.use("sample").then((sm) => { if (sm) $("qc-panel").hidden = false; });
     let first = true;
     db.collection("cotacoes").limit(1000).onSnapshot((snap) => {
@@ -995,6 +1233,12 @@ ${text}`;
     }, (e) => setMsg(errText(e), true));
     db.doc("config/conferencia").onSnapshot((d) => { S.confMeta = d.exists ? d.data() : null; renderAll(); });
     db.doc("config/vinculos").onSnapshot((d) => { S.vinc = (d.exists && d.data().map) || {}; renderAll(); });
+    db.doc("config/eap").onSnapshot((d) => { S.eapMeta = d.exists ? d.data() : null; renderConfInfo(); });
+    db.collection("eap").limit(100).onSnapshot((snap) => {
+      S.eapParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []]));
+      $("eap-dl").innerHTML = eapRows().filter((r) => isLeaf(r[0])).map((r) => `<option value="${esc(r[0] + " — " + r[2])}"></option>`).join("");
+      renderTable(); renderQcCard();
+    });
     db.collection("conferencia").limit(100).onSnapshot((snap) => {
       S.confParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []]));
       S.loadedConf = true; renderAll();
