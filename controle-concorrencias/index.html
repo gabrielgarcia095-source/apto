@@ -339,7 +339,10 @@ dl.kv dd { margin: 0; }
 
   <div id="mod-nf" class="modbody" hidden>
     <div class="row modbar"><h2>Pedido × Nota fiscal</h2></div>
-    <div class="panel"><p style="margin:0">Próxima etapa: importar as notas fiscais e conferir com os pedidos e contratos (o que já foi faturado, o que falta e onde o valor diverge).</p></div>
+    <div class="panel"><p style="margin:0 0 10px">Próxima etapa: importar as notas fiscais e conferir com os pedidos e contratos (o que já foi faturado, o que falta e onde o valor diverge).</p>
+      <p class="hint" style="margin:0 0 8px">Envie aqui o relatório de notas (PDF ou Excel). O conteúdo fica guardado no site para o Claude ler e montar esta etapa.</p>
+      <div class="row"><input type="file" id="nf-file" accept=".pdf,.xlsx,.xls,.csv"><button class="btn primary" type="button" id="nf-go">Enviar relatório</button></div>
+      <div class="msg" id="nf-msg" role="status"></div></div>
   </div>
 </div>
 
@@ -2168,6 +2171,34 @@ ${eap.txt}`;
       m.innerHTML += `<div style="color:var(--ok)">Importado. As ligações foram recalculadas; o que você já confirmou ou recusou foi mantido.</div>`;
       pedPend = [];
     } catch (e) { m.innerHTML += `<div class="neg">${esc(errText(e))}</div>`; b.disabled = false; }
+  });
+
+  // ---------- relatório de notas: guarda o texto do arquivo para o Claude ler ----------
+  $("nf-go").addEventListener("click", async () => {
+    const f = $("nf-file").files[0], m = $("nf-msg"), b = $("nf-go");
+    if (!f) { m.className = "msg err"; m.textContent = "Escolha o arquivo primeiro."; return; }
+    if (!S.db) { m.className = "msg err"; m.textContent = "Banco de dados indisponível."; return; }
+    b.disabled = true; m.className = "msg"; m.textContent = "Lendo o arquivo…";
+    try {
+      let linhas = [];
+      if (/\.pdf$/i.test(f.name)) linhas = (await pdfLines(f)).map((l) => `${Math.round(l.x)}|${l.t}`);
+      else {
+        const wb = XLSX.read(await f.arrayBuffer(), { type: "array", cellDates: true });
+        for (const sh of wb.SheetNames) {
+          linhas.push(`<<ABA ${sh}>>`);
+          for (const r of XLSX.utils.sheet_to_json(wb.Sheets[sh], { header: 1, raw: false, defval: "" })) if (r.some((v) => String(v).trim())) linhas.push(r.join("\t"));
+        }
+      }
+      const partes = []; let cur = [], tam = 0;
+      for (const l of linhas) { if (tam + l.length > 400000 && cur.length) { partes.push(cur); cur = []; tam = 0; } cur.push(l); tam += l.length + 8; }
+      if (cur.length) partes.push(cur);
+      let old = 0; try { old = (await S.db.doc("config/nfraw").get())?.data?.()?.partes ?? 0; } catch { old = 0; }
+      for (let i = 0; i < partes.length; i++) { m.textContent = `Enviando parte ${i + 1} de ${partes.length}…`; await S.db.doc(`nfraw/parte-${i}`).set({ linhas: partes[i] }); }
+      await S.db.doc("config/nfraw").set({ arquivo: f.name, enviadoEm: new Date().toISOString(), linhas: linhas.length, partes: partes.length });
+      for (let i = partes.length; i < old; i++) await S.db.doc(`nfraw/parte-${i}`).delete();
+      m.className = "msg"; m.innerHTML = `<span style="color:var(--ok)">Recebido: ${linhas.length} linhas de ${esc(f.name)}.</span> Avise o Claude na conversa que enviou.`;
+    } catch (e) { m.className = "msg err"; m.textContent = errText(e); }
+    b.disabled = false;
   });
 
   // ---------- banco de dados ----------
