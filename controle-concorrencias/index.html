@@ -187,6 +187,7 @@ dl.kv dd { margin: 0; }
     <button class="tab" role="tab" id="tab-cot" aria-selected="true" type="button">Cotações</button>
     <button class="tab" role="tab" id="tab-conf" aria-selected="false" type="button">Importar conferência</button>
     <button class="tab" role="tab" id="tab-sem" aria-selected="false" type="button">Lançado sem cotação <span id="sem-count" class="num"></span></button>
+    <button class="tab" role="tab" id="tab-ped" aria-selected="false" type="button">Pedidos e contratos <span id="ped-count" class="num"></span></button>
   </nav>
 
   <!-- ABA COTAÇÕES -->
@@ -242,9 +243,9 @@ dl.kv dd { margin: 0; }
       <div class="tablebox">
         <table>
           <thead><tr>
-            <th>Nº</th><th>Descrição</th><th class="r">Aprovado</th><th class="r">Lançado</th><th class="r">Diferença</th><th>Situação</th><th>Observações</th>
+            <th>Nº</th><th>Descrição</th><th class="r">Aprovado</th><th class="r">Lançado</th><th class="r">Diferença</th><th>Situação</th><th>Pedido / contrato</th><th>Observações</th>
           </tr></thead>
-          <tbody id="tbody"><tr><td colspan="7" class="empty">Carregando suas cotações…</td></tr></tbody>
+          <tbody id="tbody"><tr><td colspan="8" class="empty">Carregando suas cotações…</td></tr></tbody>
         </table>
       </div>
       <div class="hint">Clique numa linha para ver os lançamentos da conferência e editar a cotação.</div>
@@ -279,6 +280,24 @@ dl.kv dd { margin: 0; }
   </section>
 
   <!-- ABA SEM COTAÇÃO -->
+  <section id="view-ped" class="grid" hidden>
+    <div class="panel">
+      <h2>Importar do Sienge</h2>
+      <p class="hint" style="margin:0">Envie o PDF "Saldos de Pedidos de Compra" e/ou "Saldo de Contratos". Cada um substitui a versão anterior do mesmo tipo; o que você já confirmou continua valendo.</p>
+      <label>Relatórios (PDF) <input type="file" id="ped-file" accept="application/pdf,.pdf" multiple></label>
+      <div class="msg" id="ped-imp-msg" role="status"></div>
+      <div class="row"><button class="btn primary" type="button" id="ped-go" disabled>Importar</button></div>
+      <dl class="kv" id="ped-info"></dl>
+      <p class="hint" style="margin:0">A ligação é automática só quando o valor bate ao centavo com um único documento (e, para valores redondos, a data também confirma). O resto vira sugestão para você confirmar.</p>
+    </div>
+    <div style="display:grid; gap:10px; min-width:0">
+      <div class="chips" id="ped-chips"></div>
+      <div class="toolbar"><input id="ped-q" type="search" placeholder="Buscar por nº da cotação, descrição, pedido, contrato ou fornecedor"></div>
+      <div class="msg" id="ped-msg" role="status"></div>
+      <div id="ped-list"></div>
+    </div>
+  </section>
+
   <section id="view-sem" hidden style="display:grid; gap:10px">
     <p class="hint" style="margin:0">Números que aparecem na planilha de orçamento mas não existem entre as cotações cadastradas.</p>
     <div class="tablebox">
@@ -291,6 +310,7 @@ dl.kv dd { margin: 0; }
 </div>
 
 <datalist id="eap-dl"></datalist>
+<datalist id="doc-dl"></datalist>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
@@ -376,7 +396,9 @@ dl.kv dd { margin: 0; }
     vinc: {},                 // id do lançamento -> { cot, desc }
     eapMeta: null, eapParts: new Map(),  // EAP: [código, pai, descrição, un, qtd, orçado, contratado]
     qcPending: null,
-    sugDraft: {},             // edições da sugestão de uma cotação salva, ainda não gravadas          // leitura do QC que vai junto quando a cotação for salva
+    sugDraft: {},
+    docMeta: { PC: null, CT: null }, docParts: { PC: new Map(), CT: new Map() }, docVer: 0, elos: null,
+    pedF: (() => { try { return localStorage.getItem("cc-pedf") || "sug"; } catch { return "sug"; } })(),             // edições da sugestão de uma cotação salva, ainda não gravadas          // leitura do QC que vai junto quando a cotação for salva
     semOpen: null,
     loadedCot: false, loadedConf: false,
     filter: "TODOS", q: "", sort: "ordem", desc: false,
@@ -492,7 +514,8 @@ dl.kv dd { margin: 0; }
     const extra = [];
     if (x.formula) extra.push(`Valor calculado de: <span class="num">${esc(x.formula)}</span>`);
     if ((D.keyCount.get(x.k) || 0) > 1) extra.push(`<span class="dup">Há mais de uma cotação com o nº ${esc(x.num)}: a conferência usa a soma delas.</span>`);
-    let head = extra.length ? `<div class="hint" style="margin-bottom:6px">${extra.join(" · ")}</div>` : "";
+    let head = elosDetail(x);
+    head += extra.length ? `<div class="hint" style="margin-bottom:6px">${extra.join(" · ")}</div>` : "";
     if (x.qc) {
       const q = x.qc;
       head += `<div class="qc-card" style="margin-bottom:10px"><div><span class="eyebrow">QC guardado</span> <span class="hint">${esc(q.arquivo || "")} · lido em ${q.lidoEm ? new Date(q.lidoEm).toLocaleDateString("pt-BR") : "—"}</span></div>` +
@@ -510,11 +533,11 @@ dl.kv dd { margin: 0; }
 
   function renderTable() {
     const tb = $("tbody");
-    if (!S.db && S.dbChecked) { tb.innerHTML = `<tr><td colspan="7" class="empty">Sem acesso ao banco de dados nesta visualização.</td></tr>`; return; }
-    if (!S.loadedCot) { tb.innerHTML = `<tr><td colspan="7" class="empty">Carregando suas cotações…</td></tr>`; return; }
-    if (!S.cot.size) { tb.innerHTML = `<tr><td colspan="7" class="empty">Nenhuma cotação ainda. Cadastre a primeira no formulário ao lado.</td></tr>`; return; }
+    if (!S.db && S.dbChecked) { tb.innerHTML = `<tr><td colspan="8" class="empty">Sem acesso ao banco de dados nesta visualização.</td></tr>`; return; }
+    if (!S.loadedCot) { tb.innerHTML = `<tr><td colspan="8" class="empty">Carregando suas cotações…</td></tr>`; return; }
+    if (!S.cot.size) { tb.innerHTML = `<tr><td colspan="8" class="empty">Nenhuma cotação ainda. Cadastre a primeira no formulário ao lado.</td></tr>`; return; }
     const rows = visibleRows();
-    if (!rows.length) { tb.innerHTML = `<tr><td colspan="7" class="empty">Nada encontrado com esse filtro.</td></tr>`; return; }
+    if (!rows.length) { tb.innerHTML = `<tr><td colspan="8" class="empty">Nada encontrado com esse filtro.</td></tr>`; return; }
     const LIMIT = 200;
     const shown = S.showAll ? rows : rows.slice(0, LIMIT);
     let h = "";
@@ -525,10 +548,11 @@ dl.kv dd { margin: 0; }
         `<td class="r num">${fmt(x.valor)}</td><td class="r num">${x.lanc ? fmt(x.lanc) : "—"}</td>` +
         `<td class="r num${x.dif < 0 ? " diff-neg" : ""}">${x.dif == null || x.dif === 0 ? "—" : fmt(x.dif)}</td>` +
         `<td>${x.st ? `<span class="pill s-${statusCls[x.st]}">${esc(x.st)}</span>` : ""}</td>` +
+        `<td>${docBadges(x)}</td>` +
         `<td class="obs">${esc(x.obs)}</td></tr>`;
-      if (S.expanded === x.id) h += `<tr class="detail"><td colspan="7">${detailHtml(x)}</td></tr>`;
+      if (S.expanded === x.id) h += `<tr class="detail"><td colspan="8">${detailHtml(x)}</td></tr>`;
     }
-    if (rows.length > shown.length) h += `<tr><td colspan="7" class="more"><button class="btn" type="button" id="btn-more">Mostrar todas (${rows.length})</button></td></tr>`;
+    if (rows.length > shown.length) h += `<tr><td colspan="8" class="more"><button class="btn" type="button" id="btn-more">Mostrar todas (${rows.length})</button></td></tr>`;
     tb.innerHTML = h;
   }
 
@@ -564,7 +588,7 @@ dl.kv dd { margin: 0; }
   }
 
   function renderAll() {
-    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); updateCheck();
+    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); renderPed(); updateCheck();
   }
 
   // ---------- formulário ----------
@@ -721,11 +745,11 @@ dl.kv dd { margin: 0; }
 
   // ---------- abas ----------
   function selectTab(t) {
-    for (const n of ["cot", "conf", "sem"]) { $("tab-" + n).setAttribute("aria-selected", String(n === t)); $("view-" + n).hidden = n !== t; }
+    for (const n of ["cot", "conf", "sem", "ped"]) { $("tab-" + n).setAttribute("aria-selected", String(n === t)); $("view-" + n).hidden = n !== t; }
     try { localStorage.setItem("cc-tab", t); } catch {}
   }
-  for (const n of ["cot", "conf", "sem"]) $("tab-" + n).addEventListener("click", () => selectTab(n));
-  try { const t = localStorage.getItem("cc-tab"); if (t === "conf" || t === "sem") selectTab(t); } catch {}
+  for (const n of ["cot", "conf", "sem", "ped"]) $("tab-" + n).addEventListener("click", () => selectTab(n));
+  try { const t = localStorage.getItem("cc-tab"); if (t === "conf" || t === "sem" || t === "ped") selectTab(t); } catch {}
 
   // ---------- importação ----------
   let WB = null, WBname = "";
@@ -906,8 +930,11 @@ dl.kv dd { margin: 0; }
     const dl = await claude.use("downloads");
     if (!dl) return;
     const rows = [...D.rows].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
-    const cot = [["Nº COTAÇÃO", "DESCRIÇÃO", "VALOR APROVADO", "OBSERVAÇÕES", "VALOR PLANILHA ORÇAMENTO", "VALIDAÇÃO", "DIFERENÇA"]]
-      .concat(rows.map((x) => [/^\d+$/.test(x.num) ? Number(x.num) : x.num, x.desc, x.valor, x.obs || null, x.lanc, x.st, x.dif]));
+    const cot = [["Nº COTAÇÃO", "DESCRIÇÃO", "VALOR APROVADO", "OBSERVAÇÕES", "VALOR PLANILHA ORÇAMENTO", "VALIDAÇÃO", "DIFERENÇA", "PEDIDO / CONTRATO", "FORNECEDOR", "SITUAÇÃO DO PEDIDO", "SUGESTÃO (A CONFIRMAR)"]]
+      .concat(rows.map((x) => { const r = elosOf(x.id);
+        return [/^\d+$/.test(x.num) ? Number(x.num) : x.num, x.desc, x.valor, x.obs || null, x.lanc, x.st, x.dif,
+          r.certos.map((e) => e.doc.id).join("; ") || null, r.certos.map((e) => e.doc.forn).join("; ") || null, r.certos.map((e) => e.doc.sit).join("; ") || null,
+          r.certos.length ? null : r.sugestoes.map((e) => e.doc.id).join("; ") || null]; }));
     const conf = [["ID", "Nº COTAÇÃO", "VINCULADO À COTAÇÃO", "VALOR", "ITEM", "DESCRIÇÃO DA CONTRATAÇÃO"]]
       .concat(confRows().map((r) => { const v = r[4] != null ? S.vinc[String(r[4])] : null;
         return [r[4] ?? null, /^\d+$/.test(r[0]) ? Number(r[0]) : r[0], v && v.desc === r[3] ? v.cot : null, r[1], r[2], r[3]]; }));
@@ -1434,6 +1461,405 @@ ${eap.txt}`;
     Q.pendingKey = null;
   }
 
+  // ---------- pedidos e contratos (relatórios do Sienge) ----------
+  const brNum = (s) => Number(String(s).replace(/\./g, "").replace(",", "."));
+  const MONEY = "-?[\\d.]+,\\d{2}";
+
+  // Linhas de texto de um PDF (agrupa por altura, junta palavras próximas)
+  async function pdfLines(file) {
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    const out = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      // posição na página como ela aparece (vale também para página girada, como o relatório de contratos)
+      const vt = page.getViewport({ scale: 1 }).transform;
+      const rows = new Map();
+      for (const it of tc.items) {
+        if (!it.str || !it.str.trim()) continue;
+        const t = pdfjsLib.Util.transform(vt, it.transform);
+        const k = Math.round(t[5] / 2);
+        (rows.get(k) || rows.set(k, []).get(k)).push({ s: it.str, x: t[4], w: it.width });
+      }
+      for (const [, l] of [...rows.entries()].sort((a, b) => a[0] - b[0])) {
+        l.sort((a, b) => a.x - b.x);
+        let txt = "", end = null, x0 = l[0].x;
+        for (const it of l) { txt += end == null ? it.s : (it.x - end > 3 ? "  " : (it.x - end > 0.5 ? " " : "")) + it.s; end = it.x + it.w; }
+        out.push({ t: txt.replace(/\s+$/, ""), x: x0 });
+      }
+      out.push({ t: "<<PAGINA>>", x: 0 });
+    }
+    return out;
+  }
+
+  // "Saldos de Pedidos de Compra" e "Saldo de Contratos" do Sienge
+  function parseSienge(lines) {
+    const all = lines.map((l) => l.t).join("\n");
+    const tipo = /Saldos? de Pedidos de Compra/i.test(all) ? "PC" : /Saldo de Contratos/i.test(all) ? "CT" : null;
+    if (!tipo) return { tipo: null, docs: [] };
+    const reP = new RegExp(`^\\s*(\\d{2}/\\d{2}/\\d{4})\\s+(\\d+)\\s+(.*?)\\s+(${MONEY})\\s+(${MONEY})\\s*(.+?)\\s+(${MONEY})\\s*$`);
+    const reC = new RegExp(`^\\s*(\\d{2}/\\d{2}/\\d{4})\\s+(CT/\\d+)\\s+(\\d+)\\s*-\\s*(.*?)\\s+(${MONEY})\\s+(${MONEY})\\s+(${MONEY})\\s+(.+?)\\s+(${MONEY})\\s+(${MONEY})\\s*$`);
+    const skip = /Saldos? de (Pedidos|Contratos)|^Obra\s|^Cliente|Apresenta|^Data do|^pedido\s+pendente|SIENGE|^Totais? |^Total\s|Per[ií]odo|Indexador/i;
+    const docs = []; let cur = null, total = null;
+    for (const { t } of lines) {
+      const s = t.trim();
+      if (s === "<<PAGINA>>") { cur = null; continue; }
+      const mt = s.match(new RegExp(`^(?:Totais da obra|Total)\\s+(${MONEY})`, "i"));
+      if (mt) { total = brNum(mt[1]); cur = null; continue; }
+      if (tipo === "PC") {
+        const m = s.match(reP);
+        if (m) { cur = { tipo, id: "PC " + m[2], num: m[2], data: m[1], forn: m[3].trim(), prim: brNum(m[4]), sec: brNum(m[5]), sit: m[6].trim().replace(/^TotalmenteAtendido$/, "Totalmente atendido"), saldo: brNum(m[7]) }; docs.push(cur); continue; }
+      } else {
+        const m = s.match(reC);
+        if (m) { cur = { tipo, id: m[2], num: m[2], data: m[1], codForn: m[3], forn: m[4].trim(), prim: brNum(m[5]), sec: brNum(m[6]), saldo: brNum(m[7]), sit: m[8].trim() }; docs.push(cur); continue; }
+      }
+      if (/^\d{2}\/\d{2}\/\d{4}\s+(CT\/)?\d+/.test(s)) { cur = null; docs.push({ erro: s }); continue; }
+      if (cur && s && !skip.test(s)) cur.forn += " " + s;
+    }
+    const ok = docs.filter((d) => !d.erro);
+    const soma = Math.round(ok.reduce((t, d) => t + d.prim, 0) * 100) / 100;
+    return { tipo, docs: ok, erros: docs.filter((d) => d.erro).map((d) => d.erro), total, soma };
+  }
+
+  // ----- ligação cotação x pedido/contrato -----
+  const STOP = new Set("LTDA EIRELI ME EPP SA S/A S.A. COMERCIO COMERCIAL INDUSTRIA DE DA DO DOS DAS E EM PARA SERVICOS SERVICO CONSTRUCAO CONSTRUCOES CIVIL MATERIAIS MATERIAL LOCACAO EQUIPAMENTOS ENGENHARIA DISTRIBUIDORA IMPORTACAO EXPORTACAO TECNOLOGIA SISTEMAS BRASIL OBRA OBRAS".split(" "));
+  const fold = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+  const toks = (s) => new Set(fold(s).replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length >= 4 && !STOP.has(w) && !/^\d+$/.test(w)));
+  const parseDate = (s) => { const [d, m, y] = String(s).split("/"); return new Date(+y, +m - 1, +d).getTime(); };
+  const DAY = 86400000;
+
+  function cotAmounts(c) {
+    const out = [];
+    if (c.valor) out.push({ v: Math.round(c.valor * 100) / 100, k: "aprovado" });
+    if (c.formula) {
+      const t = String(c.formula).match(/[\d.,]+/);
+      if (t) { const p = parseValor(t[0]); if (p.valor && Math.abs(p.valor - (c.valor || 0)) > 0.009) out.push({ v: p.valor, k: "valor bruto (antes do desconto)" }); }
+    }
+    return out;
+  }
+
+  // Devolve, para cada cotação, os documentos ligados (certos) e as sugestões, com o motivo
+  function matchAll(cotList, docs, elos) {
+    const fixed = elos?.map || {};          // docId -> { cot, by }
+    const rej = elos?.rej || {};            // docId -> [cotId, ...]
+    const byId = new Map(docs.map((d) => [d.id, d]));
+    const res = new Map(cotList.map((c) => [c.id, { certos: [], sugestoes: [] }]));
+    const usedDoc = new Set();
+    for (const [docId, l] of Object.entries(fixed)) {
+      const d = byId.get(docId); if (!d || !res.has(l.cot)) continue;
+      res.get(l.cot).certos.push({ doc: d, por: "confirmado por você", manual: true }); usedDoc.add(docId);
+    }
+    const linkedCot = new Set([...res.entries()].filter(([, r]) => r.certos.length).map(([k]) => k));
+    const free = docs.filter((d) => !usedDoc.has(d.id));
+    const isRej = (d, c) => (rej[d.id] || []).includes(c.id);
+
+    // data esperada de cada cotação: mediana das datas dos documentos de valor exato das cotações vizinhas
+    const exactIdx = new Map();
+    for (const d of docs) for (const [v, f] of [[d.prim, "prim"], [d.sec, "sec"]]) if (v) { const k = Math.round(v * 100); (exactIdx.get(k) || exactIdx.set(k, []).get(k)).push({ d, f }); }
+    const ordered = [...cotList].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+    const anchor = ordered.map((c) => {
+      const hits = cotAmounts(c).flatMap((a) => (exactIdx.get(Math.round(a.v * 100)) || []).filter((h) => h.f === "prim"));
+      return hits.length === 1 ? parseDate(hits[0].d.data) : null;
+    });
+    const expected = new Map();
+    ordered.forEach((c, i) => {
+      const near = [];
+      for (let j = Math.max(0, i - 12); j <= Math.min(ordered.length - 1, i + 12); j++) if (anchor[j] != null) near.push(anchor[j]);
+      near.sort((a, b) => a - b);
+      expected.set(c.id, near.length >= 3 ? near[Math.floor(near.length / 2)] : null);
+    });
+
+    // candidatos por valor
+    const cand = [];
+    for (const c of cotList) {
+      if (linkedCot.has(c.id)) continue;
+      const ctoks = toks(`${c.desc} ${c.obs || ""} ${(c.qc?.vencedores || []).map((v) => v.fornecedor).join(" ")}`);
+      const exp = expected.get(c.id);
+      for (const a of cotAmounts(c)) {
+        for (const d of free) {
+          if (isRej(d, c)) continue;
+          for (const [v, f] of [[d.prim, "prim"], [d.sec, "sec"]]) {
+            if (!v) continue;
+            const diff = Math.abs(v - a.v);
+            const exato = diff < 0.005, perto = !exato && diff <= Math.max(1, a.v * 0.0005);
+            if (!exato && !perto) continue;
+            const ft = toks(d.forn); const comum = [...ft].filter((w) => ctoks.has(w));
+            const dd = exp != null ? Math.abs(parseDate(d.data) - exp) / DAY : null;
+            let score = (exato ? 100 : 55) - (f === "sec" ? 25 : 0) - (a.k !== "aprovado" ? 5 : 0) + (comum.length ? 30 : 0)
+              + (dd == null ? 0 : dd <= 60 ? 10 : dd > 240 ? -15 : 0) - (/Cancelad|Rescindid/i.test(d.sit) ? 5 : 0);
+            const campo = d.tipo === "CT" ? (f === "prim" ? "valor contratado" : "valor medido") : (f === "prim" ? "total do pedido" : "total entregue");
+            const por = `${exato ? "valor exato" : `valor quase igual (dif. ${fmt(v - a.v)})`}: ${campo} = ${a.k}` + (comum.length ? ` · fornecedor citado (${comum.join(", ")})` : "") + (dd != null && dd > 240 ? " · data distante do esperado" : "");
+            cand.push({ c, d, score, exato, f, a, comum, por, dd });
+          }
+        }
+      }
+    }
+    // melhor candidato por par e escolha 1-para-1 pelos maiores scores
+    cand.sort((x, y) => y.score - x.score);
+    const docTaken = new Set(), cotTaken = new Set();
+    // Ambiguidade conta só valor exato no campo principal (total do pedido / valor contratado).
+    // "Compatível" = valor exato no campo principal e data a até 75 dias da esperada para a cotação.
+    const JANELA = 75;
+    const add = (m, k, v) => (m.get(k) || m.set(k, new Set()).get(k)).add(v);
+    const exCot = new Map(), exDoc = new Map(), okCot = new Map(), okDoc = new Map();
+    for (const x of cand) if (x.exato && x.f === "prim") {
+      add(exCot, x.c.id, x.d.id); add(exDoc, x.d.id, x.c.id);
+      if (x.dd == null || x.dd <= JANELA) { add(okCot, x.c.id, x.d.id); add(okDoc, x.d.id, x.c.id); }
+    }
+    const sz = (m, k) => m.get(k)?.size || 0;
+    for (const x of cand) {
+      if (docTaken.has(x.d.id) || cotTaken.has(x.c.id)) continue;
+      const unico = sz(exCot, x.c.id) === 1 && sz(exDoc, x.d.id) === 1;
+      const dataOk = x.dd != null && x.dd <= JANELA;
+      const unicoNaData = dataOk && sz(okCot, x.c.id) === 1 && sz(okDoc, x.d.id) === 1;
+      const valorForte = Math.round(x.a.v * 100) % 100 !== 0 || x.a.v >= 5000;
+      const contraFornecedor = (x.c.qc?.vencedores || []).length && !x.comum.length;
+      // Certo só com valor exato no campo principal, sem fornecedor contrário ao QC, e:
+      //  único em valor (e valor não redondo/baixo, ou data compatível), ou o único com data compatível
+      const certo = x.exato && x.f === "prim" && !contraFornecedor && ((unico && (valorForte || dataOk)) || unicoNaData);
+      docTaken.add(x.d.id); cotTaken.add(x.c.id);
+      const r = res.get(x.c.id);
+      if (certo) r.certos.push({ doc: x.d, por: x.por + (unico ? " · único possível" : " · único com data compatível"), auto: true });
+      else {
+        const motivo = !x.exato ? "" : x.f !== "prim" ? " · bateu só com o valor entregue/medido" : contraFornecedor ? " · fornecedor diferente do vencedor do QC"
+          : !unico ? " · há outros documentos ou cotações com o mesmo valor" : " · valor redondo e baixo, e a data não confirma";
+        r.sugestoes.push({ doc: x.d, por: x.por + motivo, score: x.score });
+      }
+    }
+    // alternativas para quem ficou com sugestão (outros documentos livres com o mesmo valor)
+    for (const x of cand) {
+      const r = res.get(x.c.id);
+      if (r.certos.length || !r.sugestoes.length || docTaken.has(x.d.id) || r.sugestoes.some((s) => s.doc.id === x.d.id)) continue;
+      if (r.sugestoes.length < 4) r.sugestoes.push({ doc: x.d, por: x.por + " · alternativa", score: x.score - 1, alt: true });
+    }
+    // soma de 2 ou 3 cotações = um contrato/pedido (ex.: contrato + aditivo)
+    const semNada = cotList.filter((c) => c.valor > 0 && !res.get(c.id).certos.length && !res.get(c.id).sugestoes.length);
+    const cents = (v) => Math.round(v * 100);
+    const pares = new Map();
+    for (let i = 0; i < semNada.length; i++) for (let j = i + 1; j < semNada.length; j++) {
+      const k = cents(semNada[i].valor) + cents(semNada[j].valor); (pares.get(k) || pares.set(k, []).get(k)).push([semNada[i], semNada[j]]);
+    }
+    for (const d of free) {
+      if (docTaken.has(d.id) || d.prim < 1000) continue;
+      const alvo = cents(d.prim);
+      const combos = [...(pares.get(alvo) || [])];
+      for (const c of semNada) for (const pr of pares.get(alvo - cents(c.valor)) || []) if (!pr.includes(c) && c.ordem < pr[0].ordem) combos.push([c, ...pr]);
+      if (!combos.length || combos.length > 3) continue;
+      for (const combo of combos) for (const c of combo) {
+        if (isRej(d, c)) continue;
+        const outras = combo.filter((o) => o !== c).map((o) => o.num).join(" + ");
+        res.get(c.id).sugestoes.push({ doc: d, por: `soma: esta cotação + ${outras} = ${d.tipo === "CT" ? "valor contratado" : "total do pedido"} (${fmt(d.prim)})`, score: 45, soma: true });
+      }
+    }
+    // por nome: cotações sem nada que citam o fornecedor de um documento livre (ex.: contratos de pessoas na EQ INDIRETA)
+    const freeLeft = free.filter((d) => !docTaken.has(d.id));
+    for (const c of cotList) {
+      const r = res.get(c.id); if (r.certos.length || r.sugestoes.length) continue;
+      const desc = fold(`${c.desc} ${c.obs || ""}`);
+      for (const d of freeLeft) {
+        if (isRej(d, c)) continue;
+        const nome = fold(d.forn).replace(/^[\d.\s]+/, "").replace(/[^A-Z ]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOP.has(w));
+        if (nome.length >= 2 && nome.slice(0, 2).every((w) => new RegExp(`\\b${w}\\b`).test(desc)))
+          r.sugestoes.push({ doc: d, por: `o nome do fornecedor (${nome.slice(0, 2).join(" ")}) está na descrição da cotação`, score: 40, nome: true });
+      }
+    }
+    return { res, docTaken };
+  }
+
+  // Documentos guardados: PC/CT -> linhas [nº, data, fornecedor, principal, entregue/medido, situação, saldo]
+  function allDocs() {
+    const out = [];
+    for (const tipo of ["PC", "CT"]) {
+      const n = S.docMeta[tipo]?.partes ?? 0;
+      for (let p = 0; p < n; p++) for (const r of S.docParts[tipo].get(`${tipo}-${p}`) || [])
+        out.push({ tipo, id: tipo === "PC" ? "PC " + r[0] : r[0], num: r[0], data: r[1], forn: r[2], prim: r[3], sec: r[4], sit: r[5], saldo: r[6] });
+    }
+    return out;
+  }
+  // Ligações refeitas só quando cotações, documentos ou confirmações mudam
+  let elosCache = { cot: null, ver: -1, elos: null, out: null };
+  function elosAll() {
+    if (elosCache.cot === S.cot && elosCache.ver === S.docVer && elosCache.elos === S.elos) return elosCache.out;
+    const docs = allDocs();
+    const cotList = [...S.cot].map(([id, c]) => ({ id, ...c }));
+    const map = {}, rej = {};
+    for (const l of S.elos?.links || []) map[l.doc] = { cot: l.cot };
+    for (const l of S.elos?.rej || []) (rej[l.doc] ||= []).push(l.cot);
+    const out = docs.length ? { ...matchAll(cotList, docs, { map, rej }), docs } : { res: new Map(), docTaken: new Set(), docs: [] };
+    out.linkedDocs = new Map();
+    for (const [cid, r] of out.res) for (const x of r.certos) out.linkedDocs.set(x.doc.id, cid);
+    elosCache = { cot: S.cot, ver: S.docVer, elos: S.elos, out };
+    return out;
+  }
+  const elosOf = (cid) => elosAll().res.get(cid) || { certos: [], sugestoes: [] };
+  const sitCls = (s) => /Cancel|Rescind/i.test(s) ? "s-DIVERGENCIA" : /Total|Conclu/i.test(s) ? "s-OK" : /Parcial/i.test(s) ? "s-AGUARDANDO" : "s-FALTA";
+
+  function docBadges(x) {
+    if (!S.docMeta.PC && !S.docMeta.CT) return "";
+    const r = elosOf(x.id);
+    if (r.certos.length) return r.certos.map((e) => `<span class="pill s-OK" title="${esc(e.doc.forn)} · ${esc(e.doc.sit)}">${esc(e.doc.id)}</span>`).join(" ");
+    if (r.sugestoes.length) return `<span class="pill s-FALTA" title="Sugestão: confirme na aba Pedidos e contratos">${esc(r.sugestoes[0].doc.id)}?</span>`;
+    return x.valor ? `<span class="hint">sem pedido</span>` : "";
+  }
+
+  function docLine(d) {
+    const lbl2 = d.tipo === "CT" ? "medido" : "entregue";
+    return `<b>${esc(d.id)}</b> · ${esc(d.forn)} · ${esc(d.data)} · <span class="num">${fmt(d.prim)}</span>` +
+      ` <span class="hint">(${lbl2} <span class="num">${fmt(d.sec)}</span>)</span> <span class="pill ${sitCls(d.sit)}">${esc(d.sit)}</span>`;
+  }
+  // Bloco que aparece nos detalhes da cotação
+  function elosDetail(x) {
+    if (!S.docMeta.PC && !S.docMeta.CT) return "";
+    const r = elosOf(x.id);
+    let h = `<div class="qc-card" style="margin-bottom:10px"><span class="eyebrow">Pedido / contrato</span>`;
+    for (const e of r.certos) h += `<div>${docLine(e.doc)}<br><span class="hint">${esc(e.por)}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(x.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`;
+    for (const s of r.sugestoes) h += `<div>Sugestão: ${docLine(s.doc)}<br><span class="hint">${esc(s.por)}</span> <button class="btn primary" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(x.id)}">Confirmar</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(x.id)}">Não é este</button></div>`;
+    if (!r.certos.length && !r.sugestoes.length) h += `<div class="hint">Nenhum pedido ou contrato encontrado para esta cotação.</div>`;
+    h += `<div class="row"><input list="doc-dl" id="lk-doc-${esc(x.id)}" placeholder="Vincular outro: PC 1234 ou CT/150" style="max-width:360px"><button class="btn" type="button" data-el="add" data-cot="${esc(x.id)}">Vincular</button></div>`;
+    return h + `<div class="msg" id="el-msg-${esc(x.id)}" role="status"></div></div>`;
+  }
+
+  // ---- gravação das confirmações (config/elos: links e recusas por nº do documento) ----
+  async function saveElos(next, msgEl, ok) {
+    try { await S.db.doc("config/elos").set(next); if (msgEl) { msgEl.className = "msg"; msgEl.textContent = ok; } }
+    catch (e) { if (msgEl) { msgEl.className = "msg err"; msgEl.textContent = errText(e); } }
+  }
+  const curElos = () => ({ links: [...(S.elos?.links || [])], rej: [...(S.elos?.rej || [])] });
+  function elosLink(e, docId, cotId) {
+    e.links = e.links.filter((l) => l.doc !== docId); e.rej = e.rej.filter((l) => !(l.doc === docId && l.cot === cotId));
+    e.links.push({ doc: docId, cot: cotId, em: new Date().toISOString() });
+  }
+  function docIdFrom(v) { const m = String(v).toUpperCase().match(/^\s*(PC\s*\d+|CT\s*\/\s*\d+)/); return m ? m[1].replace(/^PC\s*/, "PC ").replace(/\s*\/\s*/, "/") : ""; }
+
+  document.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-el]"); if (!b || !S.db) return;
+    ev.stopPropagation();
+    const act = b.dataset.el, cot = b.dataset.cot, doc = b.dataset.doc;
+    const msg = $("el-msg-" + cot) || $("ped-msg");
+    const e = curElos();
+    if (act === "ok") { elosLink(e, doc, cot); return saveElos(e, msg, `${doc} vinculado.`); }
+    if (act === "no") { e.rej.push({ doc, cot }); return saveElos(e, msg, `${doc} descartado para esta cotação.`); }
+    if (act === "unlink") {
+      if (b.dataset.manual) e.links = e.links.filter((l) => l.doc !== doc);
+      else e.rej.push({ doc, cot });
+      return saveElos(e, msg, `${doc} desvinculado.`);
+    }
+    if (act === "add") {
+      const id = docIdFrom($("lk-doc-" + cot)?.value || "");
+      if (!id || !elosAll().docs.some((d) => d.id === id)) { msg.className = "msg err"; msg.textContent = "Escolha um pedido ou contrato da lista (ex.: PC 1211 ou CT/150)."; return; }
+      elosLink(e, id, cot); return saveElos(e, msg, `${id} vinculado.`);
+    }
+    if (act === "doc2cot") {
+      const v = $("lk-cot-" + doc.replace(/\W/g, "_"))?.value || "";
+      const hit = [...S.cot.entries()].find(([, c]) => key(c.num) === key(v));
+      if (!hit) { msg.className = "msg err"; msg.textContent = `Não existe cotação nº ${v}.`; return; }
+      elosLink(e, doc, hit[0]); return saveElos(e, msg, `${doc} vinculado à cotação ${hit[1].num}.`);
+    }
+    if (act === "all") {
+      const lista = pedLists().sug;
+      for (const r of lista) elosLink(e, r.s[0].doc.id, r.c.id);
+      return saveElos(e, msg, `${lista.length} sugestões confirmadas.`);
+    }
+  }, true);
+
+  // ---- aba Pedidos e contratos ----
+  function pedLists() {
+    const { res, docs, linkedDocs } = elosAll();
+    const ok = [], sug = [], sem = [];
+    for (const [id, c] of S.cot) {
+      const r = res.get(id) || { certos: [], sugestoes: [] };
+      if (r.certos.length) ok.push({ c: { id, ...c }, r });
+      else if (r.sugestoes.length) sug.push({ c: { id, ...c }, r, s: r.sugestoes });
+      else if (c.valor) sem.push({ c: { id, ...c }, r });
+    }
+    const livres = docs.filter((d) => !linkedDocs.has(d.id));
+    const ord = (a, b) => (a.c.ordem ?? 0) - (b.c.ordem ?? 0);
+    return { ok: ok.sort(ord), sug: sug.sort(ord), sem: sem.sort(ord), livres };
+  }
+  function renderPed() {
+    const box = $("ped-list"); if (!box) return;
+    const temDocs = S.docMeta.PC || S.docMeta.CT;
+    $("ped-info").innerHTML = ["PC", "CT"].map((t) => { const m = S.docMeta[t];
+      return `<dt>${t === "PC" ? "Pedidos" : "Contratos"}</dt><dd>${m ? `${m.n} · ${fmt(m.soma)} · ${new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : "não importado"}</dd>`; }).join("");
+    if (!temDocs) { box.innerHTML = `<div class="empty">Importe o relatório de pedidos de compra e/ou o de contratos do Sienge (PDF) para ligar cada cotação ao seu pedido.</div>`; $("ped-chips").innerHTML = ""; $("ped-count").textContent = ""; return; }
+    const L = pedLists();
+    $("ped-count").textContent = L.sug.length ? `(${L.sug.length})` : "";
+    const chips = [["sug", "Sugestões para confirmar", L.sug.length, "var(--warn)"], ["sem", "Cotações sem pedido/contrato", L.sem.length, "var(--bad)"], ["livres", "Pedidos/contratos sem cotação", L.livres.length, "var(--wait)"], ["ok", "Ligadas", L.ok.length, "var(--ok)"]];
+    $("ped-chips").innerHTML = chips.map(([k, l, n, cor]) => `<button type="button" class="chip" data-pf="${k}" aria-pressed="${S.pedF === k}"><span class="dot" style="background:${cor}"></span>${l} <b>${n}</b></button>`).join("");
+    const q = fold($("ped-q").value.trim());
+    const hitC = (c) => !q || fold(`${c.num} ${c.desc} ${c.obs || ""}`).includes(q);
+    const hitD = (d) => !q || fold(`${d.id} ${d.forn} ${d.num}`).includes(q);
+    let h = "";
+    if (S.pedF === "sug") {
+      const rows = L.sug.filter((r) => hitC(r.c) || r.s.some((s) => hitD(s.doc)));
+      h = rows.length ? `<div class="row" style="margin-bottom:8px"><button class="btn" type="button" data-el="all">Confirmar a 1ª sugestão de todas (${L.sug.length})</button><span class="hint">Revise antes: cada linha mostra o motivo.</span></div>` : "";
+      h += tbl(["Cotação", "Aprovado", "Sugestão de pedido/contrato", ""], rows.map((r) =>
+        `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.s.map((s, i) => `<div style="margin-bottom:6px">${docLine(s.doc)}<br><span class="hint">${esc(s.por)}</span> ` +
+          `<button class="btn${i ? "" : " primary"}" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Confirmar</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Não é este</button></div>`).join("")}</td><td></td></tr>`), "Nenhuma sugestão pendente.");
+    } else if (S.pedF === "sem") {
+      const rows = L.sem.filter((r) => hitC(r.c));
+      h = tbl(["Cotação", "Aprovado", "Observações", "Vincular a"], rows.map((r) =>
+        `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td class="obs">${esc(r.c.obs || "")}</td>` +
+        `<td><div class="row"><input list="doc-dl" id="lk-doc-${esc(r.c.id)}" placeholder="PC 1234 ou CT/150" style="width:12rem"><button class="btn" type="button" data-el="add" data-cot="${esc(r.c.id)}">Vincular</button></div><div class="msg" id="el-msg-${esc(r.c.id)}"></div></td></tr>`), "Todas as cotações têm pedido ou contrato.");
+    } else if (S.pedF === "livres") {
+      const rows = L.livres.filter(hitD).sort((a, b) => parseDate(b.data) - parseDate(a.data));
+      h = tbl(["Pedido / contrato", "Valor", "Vincular à cotação nº"], rows.map((d) =>
+        `<tr><td>${docLine(d)}</td><td class="r num">${fmt(d.prim)}</td><td><div class="row"><input id="lk-cot-${d.id.replace(/\W/g, "_")}" placeholder="Nº da cotação" style="width:8rem"><button class="btn" type="button" data-el="doc2cot" data-doc="${esc(d.id)}">Vincular</button></div></td></tr>`), "Todos os pedidos e contratos estão ligados a uma cotação.");
+    } else {
+      const rows = L.ok.filter((r) => hitC(r.c) || r.r.certos.some((e) => hitD(e.doc)));
+      h = tbl(["Cotação", "Aprovado", "Pedido / contrato", "Diferença"], rows.map((r) => {
+        const soma = r.r.certos.reduce((t, e) => t + e.doc.prim, 0), dif = Math.round(((r.c.valor || 0) - soma) * 100) / 100;
+        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.r.certos.map((e) => `<div>${docLine(e.doc)} <span class="hint">· ${esc(e.manual ? "confirmado por você" : "automático")}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(r.c.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("")}</td>` +
+          `<td class="r num${dif ? " neg" : ""}">${dif ? fmt(dif) : "—"}</td></tr>`; }), "Nenhuma cotação ligada ainda.");
+    }
+    box.innerHTML = h;
+  }
+  function tbl(head, rows, vazio) {
+    return `<div class="tablebox"><table><thead><tr>${head.map((x, i) => `<th${i === 1 && x !== "Valor" ? ' class="r"' : x === "Valor" || x === "Diferença" ? ' class="r"' : ""}>${x}</th>`).join("")}</tr></thead><tbody>` +
+      (rows.length ? rows.slice(0, 300).join("") + (rows.length > 300 ? `<tr><td colspan="${head.length}" class="hint">Mostrando 300 de ${rows.length}. Use a busca.</td></tr>` : "") : `<tr><td colspan="${head.length}" class="empty">${vazio}</td></tr>`) + `</tbody></table></div>`;
+  }
+  function fillDocList() {
+    $("doc-dl").innerHTML = elosAll().docs.map((d) => `<option value="${esc(`${d.id} — ${d.forn} — ${fmt(d.prim)}`)}"></option>`).join("");
+  }
+
+  $("ped-chips").addEventListener("click", (ev) => { const b = ev.target.closest("[data-pf]"); if (!b) return; S.pedF = b.dataset.pf; try { localStorage.setItem("cc-pedf", S.pedF); } catch {} renderPed(); });
+  let pedT; $("ped-q").addEventListener("input", () => { clearTimeout(pedT); pedT = setTimeout(renderPed, 150); });
+
+  // ---- importação dos relatórios ----
+  let pedPend = [];
+  $("ped-file").addEventListener("change", async (ev) => {
+    const files = [...(ev.target.files || [])]; ev.target.value = "";
+    const m = $("ped-imp-msg"); m.className = "msg"; m.textContent = "Lendo…"; pedPend = [];
+    try {
+      if (!window.pdfjsLib) throw new Error("pdf");
+      for (const f of files) {
+        const r = parseSienge(await pdfLines(f));
+        if (!r.tipo) { pedPend.push({ f, erro: "Não reconheci este relatório. Use 'Saldos de Pedidos de Compra' ou 'Saldo de Contratos' do Sienge." }); continue; }
+        pedPend.push({ f, ...r });
+      }
+    } catch { m.className = "msg err"; m.textContent = "Não consegui ler o PDF. Recarregue a página e tente de novo."; return; }
+    m.innerHTML = pedPend.map((p) => p.erro ? `<div class="neg">${esc(p.f.name)}: ${esc(p.erro)}</div>` :
+      `<div><b>${p.tipo === "PC" ? "Pedidos" : "Contratos"}</b> (${esc(p.f.name)}): ${p.docs.length} encontrados, soma ${fmt(p.soma)}. ` +
+      (p.total == null ? `<span class="hint">Total do relatório não encontrado.</span>` : Math.abs(p.total - p.soma) < 0.05 ? `<span style="color:var(--ok)">Confere com o total do relatório (${fmt(p.total)}).</span>` : `<span class="neg">Não confere com o total do relatório (${fmt(p.total)}): confira o arquivo.</span>`) +
+      (p.erros.length ? ` <span class="neg">${p.erros.length} linha(s) não lida(s).</span>` : "") + `</div>`).join("");
+    $("ped-go").disabled = !pedPend.some((p) => p.docs?.length);
+  });
+  $("ped-go").addEventListener("click", async () => {
+    const m = $("ped-imp-msg"), b = $("ped-go"); b.disabled = true;
+    try {
+      for (const p of pedPend.filter((x) => x.docs?.length)) {
+        const rows = p.docs.map((d) => [d.num, d.data, d.forn, d.prim, d.sec, d.sit, d.saldo]);
+        const parts = []; for (let i = 0; i < rows.length; i += PART_SIZE) parts.push(rows.slice(i, i + PART_SIZE));
+        const old = S.docMeta[p.tipo]?.partes ?? 0;
+        for (let i = 0; i < parts.length; i++) await S.db.doc(`docs/${p.tipo}-${i}`).set({ rows: parts[i] });
+        await S.db.doc(`config/docs-${p.tipo}`).set({ arquivo: p.f.name, importadoEm: new Date().toISOString(), n: rows.length, soma: p.soma, total: p.total, partes: parts.length });
+        for (let i = parts.length; i < old; i++) await S.db.doc(`docs/${p.tipo}-${i}`).delete();
+      }
+      m.innerHTML += `<div style="color:var(--ok)">Importado. As ligações foram recalculadas; o que você já confirmou ou recusou foi mantido.</div>`;
+      pedPend = [];
+    } catch (e) { m.innerHTML += `<div class="neg">${esc(errText(e))}</div>`; b.disabled = false; }
+  });
+
   // ---------- banco de dados ----------
   async function start() {
     const db = await claude.use("db");
@@ -1458,6 +1884,13 @@ ${eap.txt}`;
     db.doc("config/conferencia").onSnapshot((d) => { S.confMeta = d.exists ? d.data() : null; renderAll(); });
     db.doc("config/vinculos").onSnapshot((d) => { S.vinc = (d.exists && d.data().map) || {}; renderAll(); });
     db.doc("config/eap").onSnapshot((d) => { S.eapMeta = d.exists ? d.data() : null; renderConfInfo(); });
+    for (const t of ["PC", "CT"]) db.doc(`config/docs-${t}`).onSnapshot((d) => { S.docMeta[t] = d.exists ? d.data() : null; S.docVer++; renderAll(); fillDocList(); });
+    db.collection("docs").limit(100).onSnapshot((snap) => {
+      S.docParts = { PC: new Map(), CT: new Map() };
+      for (const d of snap.docs) { const t = d.id.slice(0, 2); if (S.docParts[t]) S.docParts[t].set(d.id, d.data().rows || []); }
+      S.docVer++; renderAll(); fillDocList();
+    });
+    db.doc("config/elos").onSnapshot((d) => { S.elos = d.exists ? d.data() : { links: [], rej: [] }; renderAll(); });
     db.collection("eap").limit(100).onSnapshot((snap) => {
       S.eapParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []]));
       $("eap-dl").innerHTML = eapRows().filter((r) => isLeaf(r[0])).map((r) => `<option value="${esc(r[0] + " — " + r[2])}"></option>`).join("");
