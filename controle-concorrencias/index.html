@@ -149,6 +149,8 @@ dl.kv dd { margin: 0; }
 .qc-wait::after { content: ""; display: inline-block; width: 10px; height: 10px; margin-left: 8px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: girar .8s linear infinite; vertical-align: -1px; }
 @keyframes girar { to { transform: rotate(360deg); } }
 @media (max-width: 900px) { .qc-res { grid-template-columns: minmax(0, 1fr); } }
+.qtable { min-width: 760px; }
+.qtable td { vertical-align: middle; }
 .qc-warn { background: var(--warn-bg); border-radius: 6px; padding: 6px 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -191,8 +193,8 @@ dl.kv dd { margin: 0; }
     <section class="panel" id="qc-panel" hidden>
       <h2>Ler QC em PDF</h2>
       <p class="hint" style="margin:0">Envie o Quadro de Concorrência. O Claude lê o nº, o vencedor e o valor aprovado. Você confere antes de salvar.</p>
-      <label>Arquivo do QC <input type="file" id="qc-file" accept="application/pdf,.pdf">
-        <span class="hint">Ou arraste o PDF para este quadro.</span></label>
+      <label>Arquivo do QC <input type="file" id="qc-file" accept="application/pdf,.pdf" multiple>
+        <span class="hint">Pode escolher ou arrastar vários PDFs de uma vez.</span></label>
     </section>
     <form class="panel" id="form" autocomplete="off">
       <div class="row" style="justify-content:space-between">
@@ -588,7 +590,7 @@ dl.kv dd { margin: 0; }
   }
 
   function resetForm(keepMsg) {
-    S.editing = null; S.qcPending = null;
+    S.editing = null; S.qcPending = null; Q.pendingKey = null;
     $("form-title").textContent = "Nova cotação";
     $("f-num").value = S.cot.size ? nextNum() : "";
     $("f-desc").value = ""; $("f-valor").value = ""; $("f-obs").value = "";
@@ -637,6 +639,7 @@ dl.kv dd { margin: 0; }
     try {
       const ref = S.editing ? S.db.collection("cotacoes").doc(S.editing) : S.db.collection("cotacoes").doc();
       await ref.set(data);
+      if (S.qcPending) qcFormSaved();
       const msg = old ? `Cotação ${num} atualizada.` : `Cotação ${num} cadastrada.`;
       resetForm(); setMsg(msg);
     } catch (e) { setMsg(errText(e), true); }
@@ -977,15 +980,15 @@ dl.kv dd { margin: 0; }
   }
   // Editor da sugestão: ctx = "qc" (QC recém-lido) ou o id da cotação salva
   function sugSource(ctx) {
-    if (ctx === "qc") return qcResult?.lancs || null;
+    if (isQ(ctx)) return qItem(ctx)?.lancs || null;
     const c = S.cot.get(ctx); if (!c?.qc) return null;
     return S.sugDraft[ctx] || (c.qc.lancamentos || []);
   }
   function editorHtml(ctx, lancs, numero, aprovado) {
     const em = eapMap();
     const soma = Math.round(lancs.reduce((t, l) => t + (Number(l.valor) || 0), 0) * 100) / 100;
-    const c = ctx === "qc" ? null : S.cot.get(ctx);
-    const dirty = ctx !== "qc" && !!S.sugDraft[ctx];
+    const c = isQ(ctx) ? null : S.cot.get(ctx);
+    const dirty = !isQ(ctx) && !!S.sugDraft[ctx];
     const at = (f, i) => `data-sug-f="1" data-ctx="${esc(ctx)}" data-i="${i}" data-f="${f}"`;
     const diff = aprovado != null && Math.abs(soma - aprovado) > 0.05;
     return `<div class="sug"><table><thead><tr><th>Item da EAP (coluna ITEM)</th><th>Descrição da contratação</th><th class="r">Valor</th><th class="r">Saldo do item depois</th><th></th></tr></thead><tbody>` +
@@ -1005,13 +1008,13 @@ dl.kv dd { margin: 0; }
       `<button class="btn" type="button" data-sug-act="add" data-ctx="${esc(ctx)}">+ Linha</button>` +
       `<button class="btn" type="button" data-sug-act="copy" data-ctx="${esc(ctx)}">Copiar para o Excel</button>` +
       `<button class="btn" type="button" data-sug-act="xlsx" data-ctx="${esc(ctx)}">Baixar .xlsx</button>` +
-      (ctx !== "qc" ? `<button class="btn${dirty || !c?.qc?.confirmadoEm ? " primary" : ""}" type="button" data-sug-act="save" data-ctx="${esc(ctx)}">${dirty ? "Salvar alterações" : "Confirmar sugestão"}</button>` +
+      (!isQ(ctx) ? `<button class="btn${dirty || !c?.qc?.confirmadoEm ? " primary" : ""}" type="button" data-sug-act="save" data-ctx="${esc(ctx)}">${dirty ? "Salvar alterações" : "Confirmar sugestão"}</button>` +
         (dirty ? `<button class="btn" type="button" data-sug-act="undo" data-ctx="${esc(ctx)}">Desfazer</button>` : "") : "") +
       `</div>` +
-      `<div class="hint">${ctx === "qc" ? "Corrija o que precisar antes de preencher o formulário." : c?.qc?.confirmadoEm ? `Confirmada em ${new Date(c.qc.confirmadoEm).toLocaleDateString("pt-BR")}.` : "Ainda não confirmada."} Para colar: coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre.</div>` +
+      `<div class="hint">${isQ(ctx) ? "Corrija o que precisar antes de salvar." : c?.qc?.confirmadoEm ? `Confirmada em ${new Date(c.qc.confirmadoEm).toLocaleDateString("pt-BR")}.` : "Ainda não confirmada."} Para colar: coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre.</div>` +
       `<div class="msg" id="sm-${esc(ctx)}" role="status"></div>`;
   }
-  function rerenderSug(ctx) { if (ctx === "qc") renderQcCard(); else renderTable(); }
+  function rerenderSug(ctx) { if (isQ(ctx)) renderQueue(); else renderTable(); }
 
   async function sugXlsx(lancs, numero, msgEl) {
     const dl = await claude.use("downloads");
@@ -1027,7 +1030,7 @@ dl.kv dd { margin: 0; }
 
   function draftOf(ctx) {
     let src = sugSource(ctx); if (!src) return null;
-    if (ctx !== "qc" && !S.sugDraft[ctx]) { S.sugDraft[ctx] = JSON.parse(JSON.stringify(src)); src = S.sugDraft[ctx]; }
+    if (!isQ(ctx) && !S.sugDraft[ctx]) { S.sugDraft[ctx] = JSON.parse(JSON.stringify(src)); src = S.sugDraft[ctx]; }
     return src;
   }
   document.addEventListener("change", (ev) => {
@@ -1048,8 +1051,8 @@ dl.kv dd { margin: 0; }
     const b = ev.target.closest("[data-sug-act]"); if (!b) return;
     ev.stopPropagation();
     const ctx = b.dataset.ctx, act = b.dataset.sugAct, msg = $("sm-" + ctx);
-    const c = ctx === "qc" ? null : S.cot.get(ctx);
-    const numero = ctx === "qc" ? qcResult?.numero : c?.num;
+    const c = isQ(ctx) ? null : S.cot.get(ctx);
+    const numero = isQ(ctx) ? qItem(ctx)?.numero : c?.num;
     const bad = () => { if (msg) { msg.className = "msg err"; msg.textContent = "Há linhas sem item válido da EAP. Corrija antes."; } };
     if (act === "copy" || act === "xlsx") {
       const src = sugSource(ctx) || [];
@@ -1068,7 +1071,7 @@ dl.kv dd { margin: 0; }
       return;
     }
     const src = draftOf(ctx); if (!src) return;
-    if (act === "add") src.push({ eap: "", item: "", descricao: String((ctx === "qc" ? qcResult?.descricao : c?.desc) || "").toUpperCase(), valor: 0, itens_qc: [], motivo: "" });
+    if (act === "add") src.push({ eap: "", item: "", descricao: String((isQ(ctx) ? qItem(ctx)?.descricao : c?.desc) || "").toUpperCase(), valor: 0, itens_qc: [], motivo: "" });
     if (act === "del") src.splice(+b.dataset.i, 1);
     rerenderSug(ctx);
   }, true);
@@ -1148,134 +1151,246 @@ ${q.itens.length ? q.itens.map((i) => `${i.descricao} | ${i.qtd ?? ""} | ${i.uni
 EAP (código | descrição | un qtd):
 ${eap.txt}`;
 
-  let qcResult = null, qcCtl = null;
-  function renderQcCard() {
-    if (!qcResult) return;
-    const q = qcResult;
-    const ex = [...S.cot.values()].find((c) => key(c.num) === key(q.numero));
+  // ---------- fila de QCs ----------
+  // Cada PDF vira um item da fila; um é lido por vez para não estourar o limite de uso do Claude.
+  const Q = { items: [], open: null, running: false, ctl: null, seq: 0, pendingKey: null };
+  const isQ = (ctx) => String(ctx).startsWith("qc:");
+  const qItem = (ctx) => Q.items.find((it) => "qc:" + it.key === ctx) || null;
+  const ST = {
+    fila: ["Na fila", "s-SEM"], lendo: ["Lendo o QC…", "s-AGUARDANDO"], eap: ["Procurando na EAP…", "s-AGUARDANDO"],
+    pronto: ["Pronto para revisar", "s-FALTA"], erro: ["Erro", "s-DIVERGENCIA"], salvo: ["Salvo", "s-OK"],
+  };
+
+  function qNota(it) {
+    const quem = it.venc.map((v) => v.fornecedor).filter(Boolean).join("; ");
+    return quem ? `${it.venc.length > 1 ? "Vencedores" : "Vencedor"}: ${quem} (QC ${it.arquivo})` : `QC ${it.arquivo}`;
+  }
+  function qPack(it, confirmado) {
+    return { arquivo: it.arquivo, lidoEm: new Date().toISOString(), numero: it.numero,
+      vencedores: it.venc.map((v) => ({ fornecedor: v.fornecedor, valor: v.valor })), total: it.total, duvida: it.duvida,
+      itens: it.itens, lancamentos: (it.lancs || []).map((l) => ({ ...l })), duvidaEap: it.duvidaEap,
+      confirmadoEm: confirmado ? new Date().toISOString() : null };
+  }
+  const qExisting = (it) => [...S.cot.entries()].find(([, c]) => key(c.num) === key(it.numero)) || null;
+
+  function cardHtml(it) {
+    const ctx = "qc:" + it.key;
+    const ex = qExisting(it);
     let sug;
-    if (q.semEap) sug = `<div class="hint">Importe o CONTROLE ORÇAMENTO (com a aba EAP) na aba "Importar conferência" para receber esta sugestão.</div>`;
-    else if (q.eapState === "loading") sug = `<div class="qc-wait">Procurando os itens na EAP${q.eapMae ? ` ${esc(q.eapMae)}` : ""}…</div>`;
-    else if (q.eapState === "erro") sug = `<div class="msg err">${esc(q.eapErro)}</div><div class="row"><button class="btn" type="button" id="qc-eap-retry">Tentar de novo</button></div>`;
-    else sug = editorHtml("qc", q.lancs, q.numero, q.total) +
-      (q.eapParcial ? `<div class="row"><button class="btn" type="button" id="qc-eap-all">Procurar na EAP inteira</button><span class="hint">Use se o item certo estiver fora da EAP mãe ${esc(q.eapMae)}.</span></div>` : "");
-    renderQc(`<div class="qc-res">
+    if (it.semEap) sug = `<div class="hint">Importe o CONTROLE ORÇAMENTO (com a aba EAP) na aba "Importar conferência" para receber esta sugestão.</div>`;
+    else if (it.eapState === "loading") sug = `<div class="qc-wait">Procurando os itens na EAP${it.eapMae ? ` ${esc(it.eapMae)}` : ""}…</div>`;
+    else if (it.eapState === "erro") sug = `<div class="msg err">${esc(it.eapErro)}</div><div class="row"><button class="btn" type="button" data-q="eap-retry" data-k="${it.key}">Tentar de novo</button></div>`;
+    else sug = editorHtml(ctx, it.lancs, it.numero, it.total) +
+      (it.eapParcial ? `<div class="row"><button class="btn" type="button" data-q="eap-all" data-k="${it.key}">Procurar na EAP inteira</button><span class="hint">Use se o item certo estiver fora da EAP mãe ${esc(it.eapMae)}.</span></div>` : "");
+    return `<div class="qc-res">
       <div class="qc-info">
-        <div class="row" style="justify-content:space-between"><span class="eyebrow">QC lido · ${esc(q.arquivo)}</span></div>
-        <div><span class="eyebrow">Cotação</span><br><b class="num">${esc(q.numero || "?")}</b> · ${esc(q.descricao || "sem descrição")}</div>
-        <div><span class="eyebrow">${q.venc.length > 1 ? "Vencedores" : "Vencedor"}</span><ul>${q.venc.map((v) => `<li>${esc(v.fornecedor)}: <span class="num">${fmt(v.valor)}</span></li>`).join("") || "<li>Nenhum vencedor identificado</li>"}</ul></div>
-        <div><span class="eyebrow">Valor aprovado</span><br><span class="big">${fmt(q.total)}</span></div>
-        ${q.duvida ? `<div class="qc-warn"><b>Dúvida:</b> ${esc(q.duvida)}</div>` : ""}
-        <div class="hint">${ex ? `Já existe a cotação ${esc(ex.num)} (“${esc(ex.desc)}”). O valor será colocado nela.` : "Não existe cotação com esse nº. Será criada uma nova."} Ao salvar, esta leitura fica guardada na cotação.</div>
-        <div class="row"><button class="btn primary" type="button" id="qc-use"${q.total == null ? " disabled" : ""}>Preencher formulário</button><button class="btn" type="button" id="qc-clear">Fechar</button></div>
+        <span class="eyebrow">QC · ${esc(it.arquivo)}</span>
+        <div><span class="eyebrow">Cotação</span><br><b class="num">${esc(it.numero || "?")}</b> · ${esc(it.descricao || "sem descrição")}</div>
+        <div><span class="eyebrow">${it.venc.length > 1 ? "Vencedores" : "Vencedor"}</span><ul>${it.venc.map((v) => `<li>${esc(v.fornecedor)}: <span class="num">${fmt(v.valor)}</span></li>`).join("") || "<li>Nenhum vencedor identificado</li>"}</ul></div>
+        <div><span class="eyebrow">Valor aprovado</span><br><span class="big">${fmt(it.total)}</span></div>
+        ${it.duvida ? `<div class="qc-warn"><b>Dúvida:</b> ${esc(it.duvida)}</div>` : ""}
+        <div class="hint">${ex ? `Já existe a cotação ${esc(ex[1].num)} (“${esc(ex[1].desc)}”, ${fmt(ex[1].valor)}). Salvar atualiza o valor dela.` : "Não existe cotação com esse nº. Salvar cria uma nova."}</div>
+        <div class="row">
+          <button class="btn primary" type="button" data-q="save" data-k="${it.key}"${it.total == null || it.status === "salvo" ? " disabled" : ""}>${it.status === "salvo" ? "Salvo" : "Salvar cotação"}</button>
+          <button class="btn" type="button" data-q="form" data-k="${it.key}"${it.total == null ? " disabled" : ""}>Abrir no formulário</button>
+        </div>
+        <div class="msg" id="qm-${it.key}" role="status"></div>
       </div>
       <div class="qc-sug">
         <span class="eyebrow">Onde lançar na planilha de orçamento</span>
         ${sug}
-        ${q.duvidaEap && q.eapState === "ok" ? `<div class="qc-warn"><b>Dúvida na EAP:</b> ${esc(q.duvidaEap)}</div>` : ""}
+        ${it.duvidaEap && it.eapState === "ok" ? `<div class="qc-warn"><b>Dúvida na EAP:</b> ${esc(it.duvidaEap)}</div>` : ""}
       </div>
-    </div>`);
-  }
-  function renderQc(html) { $("qc-out").innerHTML = html; $("qc-result").hidden = !html; }
-  function qcErr(e) {
-    const c = e?.code;
-    if (c === "not_granted" || c === "sampling_disabled") return "Você não permitiu que esta página use o Claude. Libere em Permissões do artifact para usar esta função.";
-    if (c === "rate_limited") return "Limite de uso do Claude atingido agora. Tente de novo em alguns minutos.";
-    if (c === "invalid_json") return "O Claude não devolveu uma resposta legível. Tente de novo.";
-    if (c === "image_rejected" || c === "images_unavailable") return "Não consegui enviar a imagem do PDF. Tente de novo.";
-    return "Não consegui ler esse QC agora. Tente de novo.";
+    </div>`;
   }
 
-  $("qc-file").addEventListener("change", (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (f) readQc(f); });
-  // Arrastar o PDF para qualquer parte do painel
+  function renderQueue() {
+    if (!Q.items.length) { $("qc-out").innerHTML = ""; $("qc-result").hidden = true; return; }
+    const prontos = Q.items.filter((it) => it.status === "pronto" && it.total != null).length;
+    const ativos = Q.items.filter((it) => it.status === "fila" || it.status === "lendo" || it.status === "eap").length;
+    let h = `<div class="row" style="justify-content:space-between; margin-bottom:10px">
+      <h2>QCs lidos <span class="hint">(${Q.items.length})</span></h2>
+      <div class="row">
+        ${prontos ? `<button class="btn primary" type="button" data-q="save-all">Salvar todos os prontos (${prontos})</button>` : ""}
+        ${ativos ? `<button class="btn" type="button" data-q="stop">Parar fila</button>` : ""}
+        <button class="btn" type="button" data-q="clear">${ativos ? "Fechar" : "Fechar lista"}</button>
+      </div></div>`;
+    if (Q.items.length > 1 || Q.open == null) {
+      h += `<div class="tablebox"><table class="qtable"><thead><tr><th>Arquivo</th><th>Nº</th><th>Descrição</th><th>Vencedor</th><th class="r">Valor</th><th>Situação</th><th></th></tr></thead><tbody>` +
+        Q.items.map((it) => {
+          const [lbl, cls] = ST[it.status];
+          const conf = it.status === "pronto" && (it.duvida || it.duvidaEap || (it.lancs || []).some((l) => !leafOk(l.eap))) ? ` <span class="dup" title="Tem dúvida para revisar">revisar</span>` : "";
+          return `<tr class="${Q.open === it.key ? "sel" : ""}"><td class="obs">${esc(it.arquivo)}</td><td class="num">${esc(it.numero || "")}</td><td>${esc(it.descricao || "")}</td>` +
+            `<td>${esc(it.venc.map((v) => v.fornecedor).join("; "))}</td><td class="r num">${it.total == null ? "—" : fmt(it.total)}</td>` +
+            `<td><span class="pill ${cls}">${lbl}</span>${conf}${it.status === "erro" ? `<div class="hint neg">${esc(it.erro)}</div>` : ""}</td>` +
+            `<td><div class="row">${it.status === "erro" ? `<button class="btn" type="button" data-q="retry" data-k="${it.key}">Tentar de novo</button>` : ""}` +
+            `${it.total != null ? `<button class="btn" type="button" data-q="open" data-k="${it.key}">${Q.open === it.key ? "Fechar" : "Revisar"}</button>` : ""}` +
+            `<button class="btn" type="button" data-q="del" data-k="${it.key}" aria-label="Tirar da lista">×</button></div></td></tr>`;
+        }).join("") + `</tbody></table></div>`;
+    }
+    const open = Q.items.find((it) => it.key === Q.open);
+    if (open) h += `<div style="margin-top:14px">${open.total != null || open.status === "pronto" || open.status === "eap" || open.status === "salvo" ? cardHtml(open) : `<div class="qc-wait">${ST[open.status][0]}</div>`}</div>`;
+    $("qc-out").innerHTML = h; $("qc-result").hidden = false;
+  }
+  // nomes usados pelo editor da sugestão
+  function renderQcCard() { renderQueue(); }
+  function renderQc(html) { $("qc-out").innerHTML = html; $("qc-result").hidden = !html; }
+
+  function qcErr(e) {
+    const c = e?.code;
+    if (c === "not_granted" || c === "sampling_disabled") return "Você não permitiu que esta página use o Claude. Libere em Permissões do artifact.";
+    if (c === "rate_limited") return "Limite de uso do Claude atingido. Tente de novo em alguns minutos.";
+    if (c === "invalid_json") return "O Claude não devolveu uma resposta legível.";
+    if (c === "pdf") return "O leitor de PDF não carregou. Recarregue a página.";
+    if (c === "cancelled") return "Interrompido.";
+    return "Não consegui ler esse QC agora.";
+  }
+
+  function addFiles(files) {
+    const pdfs = [...files].filter((x) => /pdf$/i.test(x.type) || /\.pdf$/i.test(x.name));
+    if (!pdfs.length) return;
+    for (const f of pdfs) Q.items.push({ key: String(++Q.seq), file: f, arquivo: f.name, status: "fila", venc: [], total: null, lancs: [], itens: [] });
+    if (pdfs.length === 1 && Q.items.length === 1) Q.open = Q.items[0].key;
+    if (pdfs.length > 1 && Q.items.length === pdfs.length) Q.open = null;
+    renderQueue(); runQueue();
+  }
+  $("qc-file").addEventListener("change", (ev) => { const fs = [...(ev.target.files || [])]; ev.target.value = ""; addFiles(fs); });
   const qcPanel = $("qc-panel");
   qcPanel.addEventListener("dragover", (ev) => { ev.preventDefault(); qcPanel.classList.add("drop"); });
   qcPanel.addEventListener("dragleave", () => qcPanel.classList.remove("drop"));
-  qcPanel.addEventListener("drop", (ev) => {
-    ev.preventDefault(); qcPanel.classList.remove("drop");
-    const f = [...(ev.dataTransfer?.files || [])].find((x) => /pdf$/i.test(x.type) || /\.pdf$/i.test(x.name));
-    if (f) readQc(f); else renderQc(`<div class="qc-card"><span class="msg err">Solte um arquivo PDF.</span></div>`);
-  });
+  qcPanel.addEventListener("drop", (ev) => { ev.preventDefault(); qcPanel.classList.remove("drop"); addFiles(ev.dataTransfer?.files || []); });
 
-  // Etapa 1: vencedor, valor e itens (aparece logo). Etapa 2: itens da EAP, em seguida.
-  async function readQc(f) {
-    const sample = await claude.use("sample"); if (!sample) return;
-    qcCtl?.abort(); qcCtl = new AbortController(); const ctl = qcCtl;
-    qcResult = null;
-    renderQc(`<div class="qc-card"><span>Lendo o PDF…</span></div>`);
+  async function runQueue() {
+    if (Q.running) return;
+    Q.running = true; Q.ctl = new AbortController();
+    const ctl = Q.ctl;
+    try {
+      for (let it; !ctl.signal.aborted && (it = Q.items.find((x) => x.status === "fila"));) await readItem(it, ctl);
+    } finally { Q.running = false; renderQueue(); }
+  }
+
+  // Etapa 1: vencedor, valor e itens. Etapa 2: itens da EAP (só a EAP mãe do QC).
+  async function readItem(it, ctl) {
+    const sample = await claude.use("sample");
+    if (!sample) { it.status = "erro"; it.erro = "O Claude não está disponível nesta visualização."; return; }
+    it.status = "lendo"; renderQueue();
     try {
       if (!window.pdfjsLib) throw { code: "pdf" };
-      const { text, images, colors, posInfo } = await readPdf(f);
+      const { text, images, colors, posInfo } = await readPdf(it.file);
       const lim = await sample.limits().catch(() => null);
       const max = lim?.images?.maxCount ?? 0;
-      renderQc(`<div class="qc-card"><span class="qc-wait">O Claude está lendo o vencedor e o valor…</span><div class="row"><button class="btn" type="button" id="qc-stop">Parar</button></div></div>`);
-      const r = await sample.json(QC_PROMPT(f.name, text, colors.slice(0, 200), posInfo.slice(0, 20), max > 0), { images: max ? images.slice(0, max) : undefined, signal: ctl.signal });
+      const r = await sample.json(QC_PROMPT(it.arquivo, text, colors.slice(0, 200), posInfo.slice(0, 20), max > 0), { images: max ? images.slice(0, max) : undefined, signal: ctl.signal });
       const venc = Array.isArray(r?.vencedores) ? r.vencedores.map((v) => ({ fornecedor: String(v.fornecedor ?? ""), valor: Number(v.valor) || 0 })) : [];
       const soma = Math.round(venc.reduce((t, v) => t + v.valor, 0) * 100) / 100;
       const total = Number(r?.total);
-      const itens = (Array.isArray(r?.itens) ? r.itens : []).slice(0, 100).map((i) => ({ descricao: String(i.descricao ?? ""), qtd: Number(i.qtd) || null, unid: String(i.unid ?? ""), fornecedor: String(i.fornecedor ?? ""), valor: Number(i.valor) || 0 }));
-      const codigo = r?.codigo_eap || (text.match(/\b0?2\.01\.\d{2}\.\d{2}\.\d{2}\b/) || [])[0] || null;
-      qcResult = { numero: String(r?.numero ?? "").trim(), descricao: String(r?.descricao ?? "").trim(), venc, total: venc.length ? soma : null, duvida: r?.duvida ? String(r.duvida) : null,
-        arquivo: f.name, itens, codigo, lancs: [], duvidaEap: null, semEap: !S.eapMeta, eapState: S.eapMeta ? "loading" : "ok" };
-      if (venc.length && isFinite(total) && Math.abs(total - soma) > 0.05 && !qcResult.duvida)
-        qcResult.duvida = `O total informado (${fmt(total)}) não bate com a soma dos vencedores (${fmt(soma)}). Usei a soma.`;
-      if (S.eapMeta && qcResult.total != null) await suggestEap(qcResult, false, ctl);
-      else { if (qcResult.total == null) qcResult.eapState = "ok"; renderQcCard(); }
+      Object.assign(it, {
+        numero: String(r?.numero ?? "").trim(), descricao: String(r?.descricao ?? "").trim(), venc, total: venc.length ? soma : null,
+        duvida: r?.duvida ? String(r.duvida) : null,
+        itens: (Array.isArray(r?.itens) ? r.itens : []).slice(0, 100).map((i) => ({ descricao: String(i.descricao ?? ""), qtd: Number(i.qtd) || null, unid: String(i.unid ?? ""), fornecedor: String(i.fornecedor ?? ""), valor: Number(i.valor) || 0 })),
+        codigo: r?.codigo_eap || (text.match(/\b0?2\.01\.\d{2}\.\d{2}\.\d{2}\b/) || [])[0] || null,
+        lancs: [], duvidaEap: null, semEap: !S.eapMeta, eapState: "ok",
+      });
+      if (venc.length && isFinite(total) && Math.abs(total - soma) > 0.05 && !it.duvida)
+        it.duvida = `O total informado (${fmt(total)}) não bate com a soma dos vencedores (${fmt(soma)}). Usei a soma.`;
+      if (it.total == null) { it.status = "erro"; it.erro = it.duvida || "Nenhum vencedor identificado."; return; }
+      if (S.eapMeta) await suggestEap(it, false, ctl);
+      it.status = "pronto";
     } catch (e) {
-      if (e?.code === "cancelled") renderQc("");
-      else renderQc(`<div class="qc-card"><span class="msg err">${e?.code === "pdf" ? "O leitor de PDF não carregou. Recarregue a página." : esc(qcErr(e))}</span></div>`);
+      it.status = e?.code === "cancelled" ? "fila" : "erro"; it.erro = qcErr(e);
     }
+    renderQueue();
   }
 
-  async function suggestEap(q, inteira, ctl) {
+  async function suggestEap(it, inteira, ctl) {
     const sample = await claude.use("sample"); if (!sample) return;
-    const eap = eapForPrompt(inteira ? null : q.codigo);
-    q.eapState = "loading"; q.eapMae = eap.mae; q.eapParcial = eap.parcial;
-    renderQcCard();
+    const eap = eapForPrompt(inteira ? null : it.codigo);
+    it.eapState = "loading"; it.eapMae = eap.mae; it.eapParcial = eap.parcial;
+    if (it.status !== "pronto" && it.status !== "salvo") it.status = "eap";
+    renderQueue();
     try {
-      const r = await sample.json(EAP_PROMPT(q, eap), { signal: ctl?.signal });
-      if (qcResult !== q) return;
+      const r = await sample.json(EAP_PROMPT(it, eap), { signal: ctl?.signal });
       const em = eapMap();
-      q.lancs = (Array.isArray(r?.lancamentos) ? r.lancamentos : []).map((l) => {
+      it.lancs = (Array.isArray(r?.lancamentos) ? r.lancamentos : []).map((l) => {
         const code = normCode(l.eap); const e = em.get(code);
         return { eap: code, item: e ? String(e[2]) : String(l.item ?? ""), descricao: String(l.descricao ?? "").trim().toUpperCase(), valor: Math.round((Number(l.valor) || 0) * 100) / 100,
           itens_qc: Array.isArray(l.itens_qc) ? l.itens_qc.map(String).slice(0, 30) : [], motivo: String(l.motivo ?? "") };
       });
-      q.duvidaEap = r?.duvida_eap ? String(r.duvida_eap) : null;
-      q.eapState = "ok";
-      // Se o formulário já foi preenchido com esta leitura, a sugestão entra nele também
-      if (S.qcPending && S.qcPending.arquivo === q.arquivo && !S.qcPending.lancamentos?.length) { S.qcPending.lancamentos = q.lancs.map((l) => ({ ...l })); S.qcPending.duvidaEap = q.duvidaEap; }
+      it.duvidaEap = r?.duvida_eap ? String(r.duvida_eap) : null;
+      it.eapState = "ok";
+      // Se o formulário já foi aberto com este QC, a sugestão entra nele também
+      if (Q.pendingKey === it.key && S.qcPending && !S.qcPending.lancamentos?.length) { S.qcPending.lancamentos = it.lancs.map((l) => ({ ...l })); S.qcPending.duvidaEap = it.duvidaEap; }
     } catch (e) {
-      if (qcResult !== q) return;
-      if (e?.code === "cancelled") { q.eapState = "erro"; q.eapErro = "Busca na EAP interrompida."; }
-      else { q.eapState = "erro"; q.eapErro = qcErr(e).replace("ler esse QC", "procurar na EAP"); }
+      if (e?.code === "cancelled") throw e;
+      it.eapState = "erro"; it.eapErro = qcErr(e).replace("ler esse QC", "procurar na EAP");
     }
-    renderQcCard();
+    renderQueue();
   }
 
-  $("qc-out").addEventListener("click", (ev) => {
-    if (ev.target.closest("#qc-stop")) { qcCtl?.abort(); return; }
-    if (ev.target.closest("#qc-clear")) { qcCtl?.abort(); qcResult = null; renderQc(""); return; }
-    if (ev.target.closest("#qc-eap-all") && qcResult) { qcCtl = new AbortController(); suggestEap(qcResult, true, qcCtl); return; }
-    if (ev.target.closest("#qc-eap-retry") && qcResult) { qcCtl = new AbortController(); suggestEap(qcResult, false, qcCtl); return; }
-    if (!ev.target.closest("#qc-use") || !qcResult) return;
-    const q = qcResult;
-    selectTab("cot");
-    const ex = [...S.cot.entries()].find(([, c]) => key(c.num) === key(q.numero));
-    const quem = q.venc.map((v) => v.fornecedor).filter(Boolean).join("; ");
-    const nota = quem ? `${q.venc.length > 1 ? "Vencedores" : "Vencedor"}: ${quem} (QC ${q.arquivo})` : `QC ${q.arquivo}`;
-    if (ex) { editRow(ex[0]); S.expanded = ex[0]; renderTable(); } else resetForm();
-    if (!ex) { $("f-num").value = q.numero; $("f-desc").value = q.descricao; }
-    $("f-valor").value = q.venc.length > 1 ? q.venc.map((v) => N2.format(v.valor)).join(" + ") : N2.format(q.total);
-    const obs = $("f-obs").value.trim();
-    $("f-obs").value = obs ? `${obs} · ${nota}` : nota;
-    S.qcPending = { arquivo: q.arquivo, lidoEm: new Date().toISOString(), numero: q.numero,
-      vencedores: q.venc.map((v) => ({ fornecedor: v.fornecedor, valor: v.valor })), total: q.total, duvida: q.duvida,
-      itens: q.itens, lancamentos: q.lancs.map((l) => ({ ...l })), duvidaEap: q.duvidaEap, confirmadoEm: new Date().toISOString() };
-    updateValorPrev(); updateCheck();
-    setMsg("Confira os dados e clique em Salvar. A leitura do QC será guardada junto.");
-    $("form").scrollIntoView({ behavior: "smooth", block: "start" });
+  // Grava a cotação direto a partir do QC (sem passar pelo formulário)
+  async function saveItem(it, confirmado) {
+    if (!S.db || it.total == null) return false;
+    const ex = qExisting(it);
+    const multi = it.venc.length > 1;
+    const formula = multi ? it.venc.map((v) => N2.format(v.valor)).join(" + ") : null;
+    let ordem = 0; for (const c of S.cot.values()) ordem = Math.max(ordem, c.ordem || 0);
+    const qc = qPack(it, confirmado && !(it.lancs || []).some((l) => !leafOk(l.eap)));
+    const nota = qNota(it);
+    const data = ex
+      ? { ...ex[1], valor: it.total, formula, obs: ex[1].obs ? `${ex[1].obs} · ${nota}` : nota, qc, atualizadoEm: new Date().toISOString() }
+      : { num: it.numero, desc: it.descricao, valor: it.total, formula, obs: nota, ordem: ordem + 1, qc, atualizadoEm: new Date().toISOString() };
+    const ref = ex ? S.db.collection("cotacoes").doc(ex[0]) : S.db.collection("cotacoes").doc();
+    await ref.set(data);
+    S.cot.set(ref.id, data); // a lista se atualiza sozinha; isto evita duplicar ao salvar vários seguidos
+    it.status = "salvo";
+    return true;
+  }
+
+  $("qc-out").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-q]"); if (!b) return;
+    const act = b.dataset.q, it = Q.items.find((x) => x.key === b.dataset.k);
+    if (act === "stop") { Q.ctl?.abort(); return; }
+    if (act === "clear") { Q.ctl?.abort(); Q.items = []; Q.open = null; renderQueue(); return; }
+    if (act === "save-all") {
+      b.disabled = true;
+      let ok = 0, falha = 0;
+      for (const x of Q.items.filter((y) => y.status === "pronto" && y.total != null)) {
+        try { if (await saveItem(x, false)) ok++; } catch { falha++; x.erro = "Não foi possível salvar."; }
+      }
+      renderQueue();
+      setMsg(`${ok} cotação(ões) salva(s) a partir dos QCs${falha ? `, ${falha} com erro` : ""}. As sugestões da EAP ficaram como "não confirmadas": revise em cada cotação.`, !!falha);
+      return;
+    }
+    if (!it) return;
+    if (act === "open") { Q.open = Q.open === it.key ? null : it.key; renderQueue(); return; }
+    if (act === "del") { Q.items = Q.items.filter((x) => x !== it); if (Q.open === it.key) Q.open = null; renderQueue(); return; }
+    if (act === "retry") { it.status = "fila"; it.erro = null; renderQueue(); runQueue(); return; }
+    if (act === "eap-all" || act === "eap-retry") { await suggestEap(it, act === "eap-all", new AbortController()); return; }
+    if (act === "save") {
+      const msg = $("qm-" + it.key);
+      try { await saveItem(it, true); renderQueue(); setMsg(`Cotação ${it.numero} salva com a sugestão confirmada.`); }
+      catch (e) { if (msg) { msg.className = "msg err"; msg.textContent = errText(e); } }
+      return;
+    }
+    if (act === "form") {
+      selectTab("cot");
+      const ex = qExisting(it);
+      if (ex) { editRow(ex[0]); S.expanded = ex[0]; renderTable(); } else resetForm();
+      if (!ex) { $("f-num").value = it.numero; $("f-desc").value = it.descricao; }
+      $("f-valor").value = it.venc.length > 1 ? it.venc.map((v) => N2.format(v.valor)).join(" + ") : N2.format(it.total);
+      const obs = $("f-obs").value.trim(), nota = qNota(it);
+      $("f-obs").value = obs ? `${obs} · ${nota}` : nota;
+      S.qcPending = qPack(it, true); Q.pendingKey = it.key;
+      updateValorPrev(); updateCheck();
+      setMsg("Confira os dados e clique em Salvar. A leitura do QC será guardada junto.");
+      $("form").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
+  // Chamado quando o formulário salva a cotação aberta a partir de um QC
+  function qcFormSaved() {
+    const it = Q.items.find((x) => x.key === Q.pendingKey);
+    if (it) { it.status = "salvo"; renderQueue(); }
+    Q.pendingKey = null;
+  }
 
   // ---------- banco de dados ----------
   async function start() {
