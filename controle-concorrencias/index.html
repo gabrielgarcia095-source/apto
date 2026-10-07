@@ -2515,6 +2515,16 @@ ${eap.txt}`;
       (x.guia || x.cau ? `<div class="hint">${x.guia ? `guias ${fmt(x.guia)}` : ""}${x.guia && x.cau ? " · " : ""}${x.cau ? `caução ${fmt(x.cau)}` : ""}</div>` : "") +
       titsBox(x.tits, `${x.tits.length} título(s)`) +
       (x.viaEx ? `<div class="hint">${fmt(x.viaEx)} em notas lançadas sem o nº do contrato, achadas pelo extrato</div>` : "") +
+      ((x.st === "acima" || x.st === "falta") && x.d.tipo === "PC" ? (() => {
+        // notas de outros fornecedores lançadas neste pedido (ex.: outra concreteira, transportadora, faturamento direto)
+        const nk = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" "), meu = nk(x.d.forn), por = new Map();
+        for (const t of x.tits) if (t.tipo !== "GUIA" && t.tipo !== "CAU") { const k = t.r[1].replace(/^\d+\s*-\s*/, ""); por.set(k, (por.get(k) || 0) + t.parte); }
+        const outros = [...por].filter(([k]) => nk(k) !== meu);
+        if (!outros.length) return "";
+        const proprio = [...por].filter(([k]) => nk(k) === meu).reduce((t, [, v]) => t + v, 0);
+        return `<div class="qc-warn" style="margin-top:4px">Notas de outros fornecedores lançadas neste pedido: ${outros.map(([k, v]) => `<b>${esc(k)}</b> ${fmt(v)}`).join(" · ")}. ` +
+          `Notas do próprio fornecedor: ${fmt(proprio)} (${proprio - x.ent >= 0 ? "+" : ""}${fmt(proprio - x.ent)} do entregue).</div>`;
+      })() : "") +
       (x.st === "acima" ? (() => { const tp = {}; for (const t of x.tits) if (t.tipo !== "GUIA" && t.tipo !== "CAU") tp[t.tipo] = (tp[t.tipo] || 0) + t.parte; const ks = Object.keys(tp); return ks.length > 1 ? `<div class="hint">por tipo: ${ks.map((k) => `${esc(k)} ${fmt(tp[k])}`).join(" · ")}</div>` : ""; })() : "") +
       (x.st === "okfrete" ? `<div class="hint">nota acima do entregue só pelo frete/outras despesas do pedido (${fmt(x.extra)})</div>` : "") +
       (x.d.tipo === "CT" && x.d.ex ? `<div class="row" style="margin-top:4px"><label class="hint" style="display:flex;gap:6px;align-items:center">Situação <select data-sit="${esc(x.d.id)}" style="width:auto">${["", "Concluído", "Rescindido"].map((o) => `<option value="${o}"${(S.situacao || {})[x.d.id] === o || (!o && !(S.situacao || {})[x.d.id]) ? " selected" : ""}>${o || `automática (${esc(x.d.sit)})`}</option>`).join("")}</select></label></div>` : "") +
