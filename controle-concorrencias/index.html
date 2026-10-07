@@ -68,8 +68,11 @@ header p { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
 .grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
-.sticky { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
-@media (max-width: 900px) { .sticky { position: static; } }
+/* Coluna do formulário: fica parada ao rolar a lista e rola por dentro quando passa da altura da tela */
+.sticky { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px);
+  overflow-y: auto; overscroll-behavior: contain; padding-bottom: 4px; }
+@media (max-width: 900px) { .sticky { position: static; max-height: none; overflow: visible; } }
 
 label { display: grid; gap: 4px; font-size: .8rem; font-weight: 600; color: var(--muted); }
 input, textarea, select { font: inherit; font-size: .92rem; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%; min-width: 0; }
