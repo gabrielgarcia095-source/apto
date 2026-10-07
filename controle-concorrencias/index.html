@@ -1700,17 +1700,26 @@ ${eap.txt}`;
       }
     }
     // por nome: cotações sem nada que citam o fornecedor de um documento livre (ex.: contratos de pessoas na EQ INDIRETA)
+    // Nome e sobrenome têm de aparecer em sequência na descrição ("Eduardo Silva", aceitando da/de/dos no meio);
+    // vale também para cotação de equipe que já tem contratos ligados (cada pessoa tem o seu contrato)
     const freeLeft = free.filter((d) => !docTaken.has(d.id));
-    for (const c of cotList) {
-      const r = res.get(c.id); if (r.certos.length || r.sugestoes.length) continue;
-      const desc = fold(`${c.desc} ${c.obs || ""}`);
-      for (const d of freeLeft) {
-        if (isRej(d, c)) continue;
-        const nome = fold(d.forn).replace(/^[\d.\s]+/, "").replace(/[^A-Z ]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOP.has(w));
-        if (nome.length >= 2 && nome.slice(0, 2).every((w) => new RegExp(`\\b${w}\\b`).test(desc)))
-          r.sugestoes.push({ doc: d, por: `o nome do fornecedor (${nome.slice(0, 2).join(" ")}) está na descrição da cotação`, score: 40, nome: true });
+    const PART = new Set(["DA", "DE", "DO", "DOS", "DAS", "E"]);
+    const porNome = new Map(); // doc -> cotações que citam o nome
+    for (const d of freeLeft) {
+      const nome = fold(d.forn).replace(/^[\d.\s]+/, "").replace(/[^A-Z ]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !PART.has(w) && !STOP.has(w));
+      if (nome.length < 2) continue;
+      const re = new RegExp(`\\b${nome[0]}\\s+(?:(?:DA|DE|DO|DOS|DAS|E)\\s+)?${nome[1]}\\b`);
+      for (const c of cotList) {
+        const r = res.get(c.id);
+        if (isRej(d, c) || r.sugestoes.some((x) => !x.nome)) continue;
+        if (!re.test(fold(`${c.desc} ${c.obs || ""}`))) continue;
+        const sug = { doc: d, por: `o nome do fornecedor (${nome[0]} ${nome[1]}) está na descrição da cotação`, score: 40, nome: true };
+        r.sugestoes.push(sug);
+        (porNome.get(d.id) || porNome.set(d.id, []).get(d.id)).push({ c, sug });
       }
     }
+    for (const lista of porNome.values()) if (lista.length > 1)
+      for (const { c, sug } of lista) { sug.outras = lista.filter((o) => o.c !== c).map((o) => o.c.num); sug.por += ` · o mesmo nome está na cotação ${sug.outras.join(", ")}: decida uma a uma`; }
     return { res, docTaken };
   }
 
@@ -1812,6 +1821,15 @@ ${eap.txt}`;
       return saveElos(e, msg, `${doc} marcado para excluir no Sienge.`);
     }
     if (act === "unerrado") { e.errados = e.errados.filter((x) => x.doc !== doc); return saveElos(e, $("ped-msg"), `${doc} voltou para a conferência.`); }
+    if (act === "names") {
+      const antes = { links: [...e.links], rej: [...e.rej] };
+      const ids = String(b.dataset.docs || "").split(",").filter(Boolean);
+      for (const id of ids) elosLink(e, id, cot);
+      await saveElos(e, msg, ""); S.undoOk = antes;
+      const m2 = $("ped-msg"); m2.className = "msg";
+      m2.innerHTML = `${ids.length} contratos vinculados à cotação ${esc(S.cot.get(cot)?.num ?? "")}. <button class="btn" type="button" data-el="undook">Desfazer</button>`;
+      return;
+    }
     if (act === "both") { elosLink(e, doc, cot); elosLink(e, b.dataset.doc2, cot); return saveElos(e, msg, `${doc} e ${b.dataset.doc2} vinculados.`); }
     if (act === "no") {
       e.rej.push({ doc, cot }); await saveElos(e, msg, "");
@@ -1854,6 +1872,7 @@ ${eap.txt}`;
       const row = { c: { id, ...c }, r, j: justOf(id) };
       if (r.certos.length) {
         ok.push(row);
+        if (r.sugestoes.some((x) => x.nome)) sug.push({ ...row, s: r.sugestoes.filter((x) => x.nome) });
         const fech = r.certos.filter((e) => saldoCanc(e.doc) > 0.009 || semEntrega(e.doc));
         if (fech.length) {
           row.saldo = Math.round(fech.reduce((t, e) => t + saldoCanc(e.doc), 0) * 100) / 100;
@@ -1900,12 +1919,19 @@ ${eap.txt}`;
         `<tr><td><b class="num">${esc(l.c.num)}</b> ${esc(l.c.desc)}</td><td class="r num">${fmt(l.c.valor)}</td><td>${l.d ? docLine(l.d) : esc(l.doc)}</td>` +
         `<td><button class="btn" type="button" data-el="unrej" data-doc="${esc(l.doc)}" data-cot="${esc(l.cot)}">Desfazer</button></td></tr>`), "") : "";
       h += tbl(["Cotação", "Aprovado", "Sugestão de pedido/contrato", ""], rows.map((r) => {
+        const nomes = r.s.filter((x) => x.nome);
+        const livresNome = nomes.filter((x) => !x.outras);
+        const equipe = nomes.length >= 2 || (nomes.length && r.r.certos.length) ? `<div class="qc-warn" style="margin-bottom:8px"><b>Cotação de equipe:</b> cada pessoa citada na descrição tem o próprio contrato, então normalmente todos os contratos abaixo pertencem a esta cotação.` +
+          `<div>Contratos já ligados: ${r.r.certos.length} (${fmt(r.r.certos.reduce((t, e) => t + e.doc.prim, 0))}) · citados aqui: ${nomes.length} (${fmt(nomes.reduce((t, x) => t + x.doc.prim, 0))}) · aprovado: ${fmt(r.c.valor)}</div>` +
+          (livresNome.length ? `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="names" data-docs="${esc(livresNome.map((x) => x.doc.id).join(","))}" data-cot="${esc(r.c.id)}">Confirmar os ${livresNome.length} contratos citados</button>` +
+            `<span class="hint">${esc(livresNome.map((x) => x.doc.forn.replace(/^[\d.\s]+/, "")).join("; "))}</span></div>` : "") +
+          (nomes.length > livresNome.length ? `<div class="hint">Os que também estão em outra cotação ficam para você decidir um a um.</div>` : "") + `</div>` : "";
         const par = r.s.length >= 2 && mesmaCompra(r.s[0].doc, r.s[1].doc) ? [r.s[0].doc, r.s[1].doc] : null;
         const ativo = par && par.find((d) => d.sec > 0), parado = par && par.find((d) => !(d.sec > 0));
         const aviso = par ? `<div class="qc-warn" style="margin-bottom:8px">Os dois são da mesma compra (mesmo fornecedor e valor).` +
           (ativo && parado ? ` <b>${esc(ativo.id)}</b> tem ${ativo.tipo === "CT" ? "medição" : "entrega"} e <b>${esc(parado.id)}</b> está sem movimento: provavelmente foi substituído, confira se deve ser cancelado no Sienge.` : "") +
           `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="both" data-doc="${esc(par[0].id)}" data-doc2="${esc(par[1].id)}" data-cot="${esc(r.c.id)}">Confirmar os dois</button></div></div>` : "";
-        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${aviso}${r.s.map((s, i) => `<div style="margin-bottom:6px">${docLine(s.doc)}<br><span class="hint">${esc(s.por)}</span> ` +
+        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${equipe}${aviso}${r.s.map((s, i) => `<div style="margin-bottom:6px">${docLine(s.doc)}<br><span class="hint">${esc(s.por)}</span> ` +
           `<button class="btn${i ? "" : " primary"}" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Confirmar</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Não é este</button>${errBtn(s.doc, r.c.id)}</div>`).join("")}<div class="msg" id="el-msg-${esc(r.c.id)}"></div></td><td></td></tr>`; }), "Nenhuma sugestão pendente.") + descHtml;
     } else if (S.pedF === "sem") {
       const rows = L.sem.filter((r) => hitC(r.c));
