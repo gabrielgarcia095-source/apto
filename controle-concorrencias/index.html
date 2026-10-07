@@ -325,7 +325,6 @@ dl.kv dd { margin: 0; }
       <ul class="hint" style="margin:0;padding-left:18px">
         <li>Relação de Pedidos de Compra (Excel): pedidos e itens</li>
         <li>Extrato do Fornecedor (Excel): contratos, medições e liberações</li>
-        <li>Títulos por Data (Excel): notas</li>
         <li>Os PDFs de saldos ainda são aceitos, mas não são mais necessários</li>
       </ul>
       <label>Relatórios <input type="file" id="ped-file" accept=".pdf,.xlsx,.xls" multiple></label>
@@ -348,8 +347,11 @@ dl.kv dd { margin: 0; }
   <section class="summary" id="nf-summary" aria-label="Resumo das notas"></section>
   <section id="view-nf" class="grid">
     <div class="panel">
-      <h2>Relatórios</h2>
-      <p class="hint" style="margin:0">Importe no módulo 2, em "Importar do Sienge" (Títulos por Data, Extrato do Fornecedor e os demais).</p>
+      <h2>Importar notas do Sienge</h2>
+      <p class="hint" style="margin:0">Relatório "Títulos por Data" (Excel). Substitui a versão anterior. Pedidos e contratos são importados no módulo 2.</p>
+      <label>Títulos por Data (Excel) <input type="file" id="nf-file" accept=".xlsx,.xls"></label>
+      <div class="row"><button class="btn primary" type="button" id="nf-go">Importar</button></div>
+      <div class="msg" id="nf-msg" role="status"></div>
       <dl class="kv" id="nf-info"></dl>
       <p class="hint" style="margin:0">Notas = NF, NF-e, NFS-e, fatura, recibo, nota de débito e cupom. Guias de imposto e caução aparecem à parte e não entram no faturado. Uma nota com dois pedidos é dividida entre eles pelo valor entregue.</p>
     </div>
@@ -2246,6 +2248,22 @@ ${eap.txt}`;
     await S.db.doc(t.meta).set({ arquivo: f.name, importadoEm: new Date().toISOString(), n: rows.length, partes: partes.length, ...extra });
     for (let i = partes.length; i < old; i++) await S.db.doc(`${t.coll}/parte-${i}`).delete();
   }
+  $("nf-go").addEventListener("click", async () => {
+    const f = $("nf-file").files[0], m = $("nf-msg"), b = $("nf-go");
+    if (!f) { m.className = "msg err"; m.textContent = "Escolha o arquivo primeiro."; return; }
+    if (!S.db) { m.className = "msg err"; m.textContent = "Banco de dados indisponível."; return; }
+    b.disabled = true; m.className = "msg"; m.textContent = "Lendo o arquivo…";
+    try {
+      const r = await lerXlsx(f);
+      if (r.erro) throw new Error(r.erro);
+      if (r.kind !== "titulos") throw new Error(`este é o relatório "${XL_TIPOS[r.kind].nome}": importe no módulo 2`);
+      m.textContent = `Gravando ${r.resumo}…`;
+      await gravarPartes(XL_TIPOS.titulos, f, r.rows, r.extra);
+      m.innerHTML = `<span style="color:var(--ok)">Importado: ${esc(r.resumo)}.</span>`;
+      $("nf-file").value = "";
+    } catch (e) { const t = e?.code ? errText(e) : (e?.message || String(e)); m.className = "msg err"; m.textContent = t.charAt(0).toUpperCase() + t.slice(1) + "."; }
+    b.disabled = false;
+  });
   $("ped-file").addEventListener("change", async (ev) => {
     const files = [...(ev.target.files || [])]; ev.target.value = "";
     const m = $("ped-imp-msg"); m.className = "msg"; m.textContent = "Lendo…"; pedPend = [];
