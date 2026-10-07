@@ -153,6 +153,17 @@ dl.kv dd { margin: 0; }
 .qtable td { vertical-align: middle; }
 .qtable tr.qrow { cursor: pointer; }
 .qtable tr.qrow:hover { background: var(--row-hover); }
+.mods { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.mod { font: inherit; text-align: left; display: flex; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.mod[aria-selected="true"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+.mod-n { font-family: var(--font-num); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--none-bg); flex: none; }
+.mod[aria-selected="true"] .mod-n { background: var(--accent); color: var(--accent-ink); }
+.mod-t { display: grid; gap: 2px; min-width: 0; }
+.mod-s { font-size: .78rem; color: var(--muted); }
+.modbody { display: grid; gap: 18px; }
+.modbar { justify-content: space-between; }
+.tbtn { font: inherit; text-align: left; border: 0; cursor: pointer; color: var(--ink); }
+.tbtn[aria-pressed="true"] { box-shadow: inset 0 -3px 0 var(--accent); background: var(--accent-soft); }
 .qc-warn { background: var(--warn-bg); border-radius: 6px; padding: 6px 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -160,19 +171,33 @@ dl.kv dd { margin: 0; }
 <div class="wrap">
   <header>
     <div>
-      <div class="eyebrow">Suprimentos · conferência de orçamento</div>
+      <div class="eyebrow">Suprimentos · controle de compras da obra</div>
       <h1>Controle de Concorrências</h1>
-      <p>Cadastre cada cotação aprovada. O site compara com a planilha de orçamento importada e mostra o que já foi lançado, o que falta e onde o valor diverge.</p>
+      <p>Acompanhe cada cotação aprovada em todas as etapas: lançamento no orçamento, pedido ou contrato e nota fiscal.</p>
     </div>
     <div class="row">
-      <button class="btn primary" id="btn-copia" type="button">Copiar o que falta lançar</button>
-      <button class="btn" id="btn-falta" type="button" hidden>Baixar o que falta lançar (.xlsx)</button>
       <button class="btn" id="btn-export" type="button" hidden>Baixar planilha completa (.xlsx)</button>
     </div>
-    <div class="msg" id="top-msg" role="status" style="flex-basis:100%; text-align:right"></div>
   </header>
 
   <div class="notice" id="notice" hidden></div>
+
+  <!-- Módulos: uma etapa do processo de compra em cada um -->
+  <nav class="mods" role="tablist" aria-label="Etapas">
+    <button class="mod" type="button" role="tab" data-mod="orc" aria-selected="true"><span class="mod-n">1</span><span class="mod-t"><b>Cotação × Orçamento</b><span class="mod-s" id="mod-s-orc">Lançamento na planilha de orçamento</span></span></button>
+    <button class="mod" type="button" role="tab" data-mod="ped" aria-selected="false"><span class="mod-n">2</span><span class="mod-t"><b>Cotação × Pedido / contrato</b><span class="mod-s" id="mod-s-ped">Pedidos e contratos do Sienge</span></span></button>
+    <button class="mod" type="button" role="tab" data-mod="nf" aria-selected="false"><span class="mod-n">3</span><span class="mod-t"><b>Pedido × Nota fiscal</b><span class="mod-s">Em breve</span></span></button>
+  </nav>
+
+  <div id="mod-orc" class="modbody">
+  <div class="row modbar">
+    <h2>Cotação × Orçamento</h2>
+    <div class="row">
+      <button class="btn primary" id="btn-copia" type="button">Copiar o que falta lançar</button>
+      <button class="btn" id="btn-falta" type="button" hidden>Baixar o que falta lançar (.xlsx)</button>
+    </div>
+    <div class="msg" id="top-msg" role="status" style="flex-basis:100%; text-align:right"></div>
+  </div>
 
   <section class="summary" id="summary" aria-label="Resumo">
     <div class="tile"><span class="eyebrow">Total aprovado</span><span class="v" id="t-aprov">—</span><span class="s" id="t-aprov-s">carregando…</span></div>
@@ -187,7 +212,6 @@ dl.kv dd { margin: 0; }
     <button class="tab" role="tab" id="tab-cot" aria-selected="true" type="button">Cotações</button>
     <button class="tab" role="tab" id="tab-conf" aria-selected="false" type="button">Importar conferência</button>
     <button class="tab" role="tab" id="tab-sem" aria-selected="false" type="button">Lançado sem cotação <span id="sem-count" class="num"></span></button>
-    <button class="tab" role="tab" id="tab-ped" aria-selected="false" type="button">Pedidos e contratos <span id="ped-count" class="num"></span></button>
   </nav>
 
   <!-- ABA COTAÇÕES -->
@@ -243,9 +267,9 @@ dl.kv dd { margin: 0; }
       <div class="tablebox">
         <table>
           <thead><tr>
-            <th>Nº</th><th>Descrição</th><th class="r">Aprovado</th><th class="r">Lançado</th><th class="r">Diferença</th><th>Situação</th><th>Pedido / contrato</th><th>Observações</th>
+            <th>Nº</th><th>Descrição</th><th class="r">Aprovado</th><th class="r">Lançado</th><th class="r">Diferença</th><th>Situação</th><th>Observações</th>
           </tr></thead>
-          <tbody id="tbody"><tr><td colspan="8" class="empty">Carregando suas cotações…</td></tr></tbody>
+          <tbody id="tbody"><tr><td colspan="7" class="empty">Carregando suas cotações…</td></tr></tbody>
         </table>
       </div>
       <div class="hint">Clique numa linha para ver os lançamentos da conferência e editar a cotação.</div>
@@ -280,7 +304,21 @@ dl.kv dd { margin: 0; }
   </section>
 
   <!-- ABA SEM COTAÇÃO -->
-  <section id="view-ped" class="grid" hidden>
+  <section id="view-sem" hidden style="display:grid; gap:10px">
+    <p class="hint" style="margin:0">Números que aparecem na planilha de orçamento mas não existem entre as cotações cadastradas.</p>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>Nº na planilha</th><th class="r">Lançamentos</th><th class="r">Valor lançado</th><th>Itens / descrições</th><th></th></tr></thead>
+        <tbody id="tbody-sem"><tr><td colspan="5" class="empty">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+  </div>
+
+  <div id="mod-ped" class="modbody" hidden>
+  <div class="row modbar"><h2>Cotação × Pedido / contrato</h2><span class="hint">Liga cada cotação ao pedido de compra ou contrato gerado a partir dela.</span></div>
+  <section class="summary" id="ped-summary" aria-label="Resumo de pedidos e contratos"></section>
+  <section id="view-ped" class="grid">
     <div class="panel">
       <h2>Importar do Sienge</h2>
       <p class="hint" style="margin:0">Envie o PDF "Saldos de Pedidos de Compra" e/ou "Saldo de Contratos". Cada um substitui a versão anterior do mesmo tipo; o que você já confirmou continua valendo.</p>
@@ -291,22 +329,18 @@ dl.kv dd { margin: 0; }
       <p class="hint" style="margin:0">A ligação é automática só quando o valor bate ao centavo com um único documento (e, para valores redondos, a data também confirma). O resto vira sugestão para você confirmar.</p>
     </div>
     <div style="display:grid; gap:10px; min-width:0">
-      <div class="chips" id="ped-chips"></div>
       <div class="toolbar"><input id="ped-q" type="search" placeholder="Buscar por nº da cotação, descrição, pedido, contrato ou fornecedor"></div>
       <div class="msg" id="ped-msg" role="status"></div>
       <div id="ped-list"></div>
     </div>
   </section>
 
-  <section id="view-sem" hidden style="display:grid; gap:10px">
-    <p class="hint" style="margin:0">Números que aparecem na planilha de orçamento mas não existem entre as cotações cadastradas.</p>
-    <div class="tablebox">
-      <table>
-        <thead><tr><th>Nº na planilha</th><th class="r">Lançamentos</th><th class="r">Valor lançado</th><th>Itens / descrições</th><th></th></tr></thead>
-        <tbody id="tbody-sem"><tr><td colspan="5" class="empty">Carregando…</td></tr></tbody>
-      </table>
-    </div>
-  </section>
+  </div>
+
+  <div id="mod-nf" class="modbody" hidden>
+    <div class="row modbar"><h2>Pedido × Nota fiscal</h2></div>
+    <div class="panel"><p style="margin:0">Próxima etapa: importar as notas fiscais e conferir com os pedidos e contratos (o que já foi faturado, o que falta e onde o valor diverge).</p></div>
+  </div>
 </div>
 
 <datalist id="eap-dl"></datalist>
@@ -514,8 +548,7 @@ dl.kv dd { margin: 0; }
     const extra = [];
     if (x.formula) extra.push(`Valor calculado de: <span class="num">${esc(x.formula)}</span>`);
     if ((D.keyCount.get(x.k) || 0) > 1) extra.push(`<span class="dup">Há mais de uma cotação com o nº ${esc(x.num)}: a conferência usa a soma delas.</span>`);
-    let head = elosDetail(x);
-    head += extra.length ? `<div class="hint" style="margin-bottom:6px">${extra.join(" · ")}</div>` : "";
+    let head = extra.length ? `<div class="hint" style="margin-bottom:6px">${extra.join(" · ")}</div>` : "";
     if (x.qc) {
       const q = x.qc;
       head += `<div class="qc-card" style="margin-bottom:10px"><div><span class="eyebrow">QC guardado</span> <span class="hint">${esc(q.arquivo || "")} · lido em ${q.lidoEm ? new Date(q.lidoEm).toLocaleDateString("pt-BR") : "—"}</span></div>` +
@@ -533,11 +566,11 @@ dl.kv dd { margin: 0; }
 
   function renderTable() {
     const tb = $("tbody");
-    if (!S.db && S.dbChecked) { tb.innerHTML = `<tr><td colspan="8" class="empty">Sem acesso ao banco de dados nesta visualização.</td></tr>`; return; }
-    if (!S.loadedCot) { tb.innerHTML = `<tr><td colspan="8" class="empty">Carregando suas cotações…</td></tr>`; return; }
-    if (!S.cot.size) { tb.innerHTML = `<tr><td colspan="8" class="empty">Nenhuma cotação ainda. Cadastre a primeira no formulário ao lado.</td></tr>`; return; }
+    if (!S.db && S.dbChecked) { tb.innerHTML = `<tr><td colspan="7" class="empty">Sem acesso ao banco de dados nesta visualização.</td></tr>`; return; }
+    if (!S.loadedCot) { tb.innerHTML = `<tr><td colspan="7" class="empty">Carregando suas cotações…</td></tr>`; return; }
+    if (!S.cot.size) { tb.innerHTML = `<tr><td colspan="7" class="empty">Nenhuma cotação ainda. Cadastre a primeira no formulário ao lado.</td></tr>`; return; }
     const rows = visibleRows();
-    if (!rows.length) { tb.innerHTML = `<tr><td colspan="8" class="empty">Nada encontrado com esse filtro.</td></tr>`; return; }
+    if (!rows.length) { tb.innerHTML = `<tr><td colspan="7" class="empty">Nada encontrado com esse filtro.</td></tr>`; return; }
     const LIMIT = 200;
     const shown = S.showAll ? rows : rows.slice(0, LIMIT);
     let h = "";
@@ -548,11 +581,10 @@ dl.kv dd { margin: 0; }
         `<td class="r num">${fmt(x.valor)}</td><td class="r num">${x.lanc ? fmt(x.lanc) : "—"}</td>` +
         `<td class="r num${x.dif < 0 ? " diff-neg" : ""}">${x.dif == null || x.dif === 0 ? "—" : fmt(x.dif)}</td>` +
         `<td>${x.st ? `<span class="pill s-${statusCls[x.st]}">${esc(x.st)}</span>` : ""}</td>` +
-        `<td>${docBadges(x)}</td>` +
         `<td class="obs">${esc(x.obs)}</td></tr>`;
-      if (S.expanded === x.id) h += `<tr class="detail"><td colspan="8">${detailHtml(x)}</td></tr>`;
+      if (S.expanded === x.id) h += `<tr class="detail"><td colspan="7">${detailHtml(x)}</td></tr>`;
     }
-    if (rows.length > shown.length) h += `<tr><td colspan="8" class="more"><button class="btn" type="button" id="btn-more">Mostrar todas (${rows.length})</button></td></tr>`;
+    if (rows.length > shown.length) h += `<tr><td colspan="7" class="more"><button class="btn" type="button" id="btn-more">Mostrar todas (${rows.length})</button></td></tr>`;
     tb.innerHTML = h;
   }
 
@@ -743,13 +775,22 @@ dl.kv dd { margin: 0; }
     await saveVinc(next, $("f-msg"), "Vínculo desfeito.");
   }, true);
 
+  // ---------- módulos ----------
+  function selectMod(m) {
+    for (const b of document.querySelectorAll(".mod")) b.setAttribute("aria-selected", String(b.dataset.mod === m));
+    for (const n of ["orc", "ped", "nf"]) $("mod-" + n).hidden = n !== m;
+    try { localStorage.setItem("cc-mod", m); } catch {}
+  }
+  for (const b of document.querySelectorAll(".mod")) b.addEventListener("click", () => selectMod(b.dataset.mod));
+  try { const m = localStorage.getItem("cc-mod"); if (m === "ped" || m === "nf") selectMod(m); } catch {}
+
   // ---------- abas ----------
   function selectTab(t) {
-    for (const n of ["cot", "conf", "sem", "ped"]) { $("tab-" + n).setAttribute("aria-selected", String(n === t)); $("view-" + n).hidden = n !== t; }
+    for (const n of ["cot", "conf", "sem"]) { $("tab-" + n).setAttribute("aria-selected", String(n === t)); $("view-" + n).hidden = n !== t; }
     try { localStorage.setItem("cc-tab", t); } catch {}
   }
-  for (const n of ["cot", "conf", "sem", "ped"]) $("tab-" + n).addEventListener("click", () => selectTab(n));
-  try { const t = localStorage.getItem("cc-tab"); if (t === "conf" || t === "sem" || t === "ped") selectTab(t); } catch {}
+  for (const n of ["cot", "conf", "sem"]) $("tab-" + n).addEventListener("click", () => selectTab(n));
+  try { const t = localStorage.getItem("cc-tab"); if (t === "conf" || t === "sem") selectTab(t); } catch {}
 
   // ---------- importação ----------
   let WB = null, WBname = "";
@@ -1781,11 +1822,18 @@ ${eap.txt}`;
     const temDocs = S.docMeta.PC || S.docMeta.CT;
     $("ped-info").innerHTML = ["PC", "CT"].map((t) => { const m = S.docMeta[t];
       return `<dt>${t === "PC" ? "Pedidos" : "Contratos"}</dt><dd>${m ? `${m.n} · ${fmt(m.soma)} · ${new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : "não importado"}</dd>`; }).join("");
-    if (!temDocs) { box.innerHTML = `<div class="empty">Importe o relatório de pedidos de compra e/ou o de contratos do Sienge (PDF) para ligar cada cotação ao seu pedido.</div>`; $("ped-chips").innerHTML = ""; $("ped-count").textContent = ""; return; }
+    if (!temDocs) { box.innerHTML = `<div class="empty">Importe o relatório de pedidos de compra e/ou o de contratos do Sienge (PDF) para ligar cada cotação ao seu pedido.</div>`; $("ped-summary").innerHTML = ""; $("mod-s-ped").textContent = "Pedidos e contratos do Sienge"; return; }
     const L = pedLists();
-    $("ped-count").textContent = L.sug.length ? `(${L.sug.length})` : "";
-    const chips = [["sug", "Sugestões para confirmar", L.sug.length, "var(--warn)"], ["sem", "Cotações sem pedido/contrato", L.sem.length, "var(--bad)"], ["livres", "Pedidos/contratos sem cotação", L.livres.length, "var(--wait)"], ["ok", "Ligadas", L.ok.length, "var(--ok)"]];
-    $("ped-chips").innerHTML = chips.map(([k, l, n, cor]) => `<button type="button" class="chip" data-pf="${k}" aria-pressed="${S.pedF === k}"><span class="dot" style="background:${cor}"></span>${l} <b>${n}</b></button>`).join("");
+    const soma = (arr, f) => arr.reduce((t, x) => t + (Number(f(x)) || 0), 0);
+    const manual = L.ok.filter((r) => r.r.certos.some((e) => e.manual)).length;
+    $("mod-s-ped").textContent = `${L.ok.length} ligadas · ${L.sug.length} a confirmar · ${L.sem.length} sem pedido`;
+    const tiles = [
+      ["ok", "Ligadas", L.ok.length, `${fmt(soma(L.ok, (r) => r.c.valor))} aprovados · ${manual} confirmadas por você`, "var(--ok)"],
+      ["sug", "Sugestões para confirmar", L.sug.length, "Confirme ou descarte cada uma", "var(--warn)"],
+      ["sem", "Cotações sem pedido/contrato", L.sem.length, `${fmt(soma(L.sem, (r) => r.c.valor))} aprovados`, "var(--bad)"],
+      ["livres", "Pedidos/contratos sem cotação", L.livres.length, `${fmt(soma(L.livres, (d) => d.prim))} em documentos`, "var(--wait)"],
+    ];
+    $("ped-summary").innerHTML = tiles.map(([k, l, n, sub, cor]) => `<button type="button" class="tile tbtn" data-pf="${k}" aria-pressed="${S.pedF === k}"><span class="eyebrow"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cor};margin-right:6px"></span>${l}</span><span class="v">${n}</span><span class="s">${sub}</span></button>`).join("");
     const q = fold($("ped-q").value.trim());
     const hitC = (c) => !q || fold(`${c.num} ${c.desc} ${c.obs || ""}`).includes(q);
     const hitD = (d) => !q || fold(`${d.id} ${d.forn} ${d.num}`).includes(q);
@@ -1822,7 +1870,7 @@ ${eap.txt}`;
     $("doc-dl").innerHTML = elosAll().docs.map((d) => `<option value="${esc(`${d.id} — ${d.forn} — ${fmt(d.prim)}`)}"></option>`).join("");
   }
 
-  $("ped-chips").addEventListener("click", (ev) => { const b = ev.target.closest("[data-pf]"); if (!b) return; S.pedF = b.dataset.pf; try { localStorage.setItem("cc-pedf", S.pedF); } catch {} renderPed(); });
+  $("ped-summary").addEventListener("click", (ev) => { const b = ev.target.closest("[data-pf]"); if (!b) return; S.pedF = b.dataset.pf; try { localStorage.setItem("cc-pedf", S.pedF); } catch {} renderPed(); });
   let pedT; $("ped-q").addEventListener("input", () => { clearTimeout(pedT); pedT = setTimeout(renderPed, 150); });
 
   // ---- importação dos relatórios ----
