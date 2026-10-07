@@ -1618,7 +1618,7 @@ ${eap.txt}`;
     const usedDoc = new Set();
     for (const l of fixedList) {
       const d = byId.get(l.doc); if (!d || !res.has(l.cot)) continue;
-      res.get(l.cot).certos.push({ doc: d, por: "confirmado por você", manual: true, parte: l.parte ?? null }); usedDoc.add(l.doc);
+      res.get(l.cot).certos.push({ doc: d, por: l.fd ? "faturamento direto do contrato (confirmado por você)" : "confirmado por você", manual: true, parte: l.parte ?? null, fd: !!l.fd }); usedDoc.add(l.doc);
     }
     const linkedCot = new Set([...res.entries()].filter(([, r]) => r.certos.length).map(([k]) => k));
     const free = docs.filter((d) => !usedDoc.has(d.id));
@@ -1960,7 +1960,7 @@ ${eap.txt}`;
   }
   // documento dividido entre cotações: quanto as cotações somam e quanto do documento sobra sem cotação
   function partesTxt(d) {
-    const ls = (S.elos?.links || []).filter((l) => l.doc === d.id && l.parte != null);
+    const ls = (S.elos?.links || []).filter((l) => l.doc === d.id && l.parte != null && !l.fd);
     const t = Math.round(ls.reduce((a, l) => a + l.parte, 0) * 100) / 100, dif = Math.round((d.prim - t) * 100) / 100;
     return ` · ${ls.length} cotações somam ${fmt(t)}` + (Math.abs(dif) < 0.01 ? " (fecha com o documento)" : dif > 0 ? ` <span class="neg">· ${fmt(dif)} do documento sem cotação</span>` : ` <span class="neg">· passam ${fmt(-dif)} do documento</span>`);
   }
@@ -2188,7 +2188,7 @@ ${eap.txt}`;
       const rows = L.ok.filter((r) => hitC(r.c) || r.r.certos.some((e) => hitD(e.doc)));
       h = tbl(["Cotação", "Aprovado", "Pedido / contrato", "Diferença p/ efetivo"], rows.map((r) => {
         const soma = r.r.certos.reduce((t, e) => t + (e.parte != null ? e.parte : efetivo(e.doc)), 0), dif = Math.round(((r.c.valor || 0) - soma) * 100) / 100;
-        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.r.certos.map((e) => `<div>${docLine(e.doc)}${e.parte != null ? ` <span class="hint">· desta cotação: <b class="num">${fmt(e.parte)}</b>${partesTxt(e.doc)}</span>` : ""} <span class="hint">· ${esc(e.manual ? "confirmado por você" : "automático")}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(r.c.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("")}${faltaTxt(r.r)}<div class="row" style="margin-top:4px"><input list="doc-dl" id="lk-doc-${esc(r.c.id)}" placeholder="+ outro pedido/contrato" style="width:12rem"><button class="btn" type="button" data-el="add" data-cot="${esc(r.c.id)}">Vincular</button></div><div class="msg" id="el-msg-${esc(r.c.id)}"></div></td>` +
+        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.r.certos.map((e) => `<div>${docLine(e.doc)}${e.fd ? ` <span class="hint">· faturamento direto: abate do contrato, não soma no aprovado</span>` : e.parte != null ? ` <span class="hint">· desta cotação: <b class="num">${fmt(e.parte)}</b>${partesTxt(e.doc)}</span>` : ""} <span class="hint">· ${esc(e.manual ? "confirmado por você" : "automático")}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(r.c.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("")}${faltaTxt(r.r)}<div class="row" style="margin-top:4px"><input list="doc-dl" id="lk-doc-${esc(r.c.id)}" placeholder="+ outro pedido/contrato" style="width:12rem"><button class="btn" type="button" data-el="add" data-cot="${esc(r.c.id)}">Vincular</button></div><div class="msg" id="el-msg-${esc(r.c.id)}"></div></td>` +
           `<td class="r num${dif ? " neg" : ""}">${dif ? fmt(dif) : "—"}</td></tr>`; }), "Nenhuma cotação ligada ainda.");
     }
     box.innerHTML = h;
@@ -2210,7 +2210,7 @@ ${eap.txt}`;
     const a = elosAll();
     if (docListKey === a) return; docListKey = a;
     const cobre = new Map(); // documento -> quanto as cotações ligadas já cobrem
-    for (const [cid, r] of a.res) for (const x of r.certos) cobre.set(x.doc.id, (cobre.get(x.doc.id) || 0) + (x.parte != null ? x.parte : Math.max(0, ...cotAmounts(S.cot.get(cid) || {}).map((v) => v.v))));
+    for (const [cid, r] of a.res) for (const x of r.certos) cobre.set(x.doc.id, (cobre.get(x.doc.id) || 0) + (x.fd ? x.doc.prim : x.parte != null ? x.parte : Math.max(0, ...cotAmounts(S.cot.get(cid) || {}).map((v) => v.v))));
     const livres = [], sobra = [];
     for (const d of a.docs) {
       if (!cobre.has(d.id)) { livres.push(`${d.id} — ${fmt(d.prim)} — ${String(d.forn).slice(0, 28)}`); continue; }
