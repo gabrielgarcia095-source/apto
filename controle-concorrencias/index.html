@@ -323,11 +323,10 @@ dl.kv dd { margin: 0; }
       <h2>Importar do Sienge</h2>
       <p class="hint" style="margin:0">Escolha um ou mais relatórios de uma vez; o site reconhece cada um. Cada relatório substitui a versão anterior do mesmo tipo e o que você já confirmou continua valendo.</p>
       <ul class="hint" style="margin:0;padding-left:18px">
-        <li>Saldos de Pedidos de Compra (PDF)</li>
-        <li>Saldo de Contratos (PDF)</li>
-        <li>Relação de Pedidos de Compra (Excel): itens de cada pedido</li>
+        <li>Relação de Pedidos de Compra (Excel): pedidos e itens</li>
+        <li>Extrato do Fornecedor (Excel): contratos, medições e liberações</li>
         <li>Títulos por Data (Excel): notas</li>
-        <li>Extrato do Fornecedor (Excel): medições e liberações dos contratos</li>
+        <li>Os PDFs de saldos ainda são aceitos, mas não são mais necessários</li>
       </ul>
       <label>Relatórios <input type="file" id="ped-file" accept=".pdf,.xlsx,.xls" multiple></label>
       <div class="msg" id="ped-imp-msg" role="status"></div>
@@ -1845,14 +1844,37 @@ ${eap.txt}`;
     return { res, docTaken };
   }
 
-  // Documentos guardados: PC/CT -> linhas [nº, data, fornecedor, principal, entregue/medido, situação, saldo]
+  // Documentos: PC/CT com [nº, data, fornecedor, principal, entregue/medido, situação, saldo]
+  //  Pedidos vêm da "Relação de Pedidos de Compra" e contratos do "Extrato do Fornecedor" quando estes são mais recentes
+  //  que os PDFs de saldos; a situação do pedido sai dos itens (pendente/entregue) e a do contrato do que você marcou,
+  //  do último PDF de saldos ou do medido.
+  const novo = (a, b) => !!a && (!b || String(a.importadoEm) >= String(b.importadoEm));
+  const temDocs = () => !!(S.docMeta.PC || S.docMeta.CT || S.itMeta || S.exMeta);
   function allDocs() {
-    const out = [];
+    const out = [], pdf = { PC: new Map(), CT: new Map() };
     for (const tipo of ["PC", "CT"]) {
       const n = S.docMeta[tipo]?.partes ?? 0;
       for (let p = 0; p < n; p++) for (const r of S.docParts[tipo].get(`${tipo}-${p}`) || [])
-        out.push({ tipo, id: tipo === "PC" ? "PC " + r[0] : r[0], num: r[0], data: r[1], forn: r[2], prim: r[3], sec: r[4], sit: r[5], saldo: r[6] });
+        pdf[tipo].set(tipo === "PC" ? "PC " + r[0] : r[0], { tipo, id: tipo === "PC" ? "PC " + r[0] : r[0], num: r[0], data: r[1], forn: r[2], prim: r[3], sec: r[4], sit: r[5], saldo: r[6] });
     }
+    const limpa = (f) => String(f || "").replace(/^\d+\s*-\s*/, "").trim();
+    if (novo(S.itMeta, S.docMeta.PC)) {
+      for (let i = 0; i < (S.itMeta.partes ?? 0); i++) for (const r of S.itParts.get(`parte-${i}`) || []) {
+        if (r[8] == null) continue; // importado antes de guardar fornecedor/entregue: use o PDF
+        const tot = r[6] || 0, ent = r[9] || 0, pend = r[10] || 0;
+        const sit = pend > 0.009 ? (ent > 0 ? "Parcialmente entregue" : "Pendente") : ent >= tot - 0.009 ? "Totalmente atendido" : "Cancelado";
+        out.push({ tipo: "PC", id: "PC " + r[0], num: String(r[0]), data: r[1], forn: limpa(r[8]), prim: tot, sec: ent, sit, saldo: pend });
+      }
+      if (!out.length) out.push(...pdf.PC.values());
+    } else out.push(...pdf.PC.values());
+    if (novo(S.exMeta, S.docMeta.CT)) {
+      const marc = S.situacao || {};
+      for (const c of exRows()) {
+        const velho = pdf.CT.get(c[0]), med = c[8] || 0;
+        const sit = marc[c[0]] || (velho && /Conclu|Rescind/i.test(velho.sit) ? velho.sit : med >= c[2] - 0.009 && c[2] > 0 ? "Totalmente Medido" : med > 0 ? "Parcialmente Medido" : "Sem medição");
+        out.push({ tipo: "CT", id: c[0], num: c[0], data: velho?.data || c[3], forn: limpa(c[1]), prim: c[2], sec: med, sit, saldo: Math.max(0, c[2] - med), ex: true });
+      }
+    } else out.push(...pdf.CT.values());
     return out;
   }
   // Ligações refeitas só quando cotações, documentos ou confirmações mudam
@@ -1882,7 +1904,7 @@ ${eap.txt}`;
   const sitCls = (s) => /Cancel|Rescind/i.test(s) ? "s-DIVERGENCIA" : /Total|Conclu/i.test(s) ? "s-OK" : /Parcial/i.test(s) ? "s-AGUARDANDO" : "s-FALTA";
 
   function docBadges(x) {
-    if (!S.docMeta.PC && !S.docMeta.CT) return "";
+    if (!temDocs()) return "";
     const r = elosOf(x.id);
     if (r.certos.length) return r.certos.map((e) => `<span class="pill s-OK" title="${esc(e.doc.forn)} · ${esc(e.doc.sit)}">${esc(e.doc.id)}</span>`).join(" ");
     if (r.sugestoes.length) return `<span class="pill s-FALTA" title="Sugestão: confirme na aba Pedidos e contratos">${esc(r.sugestoes[0].doc.id)}?</span>`;
@@ -1917,7 +1939,9 @@ ${eap.txt}`;
       const k = String(r[0]).trim();
       const at = (lbl) => { const i = r.findIndex((v) => String(v).trim() === lbl); return i < 0 ? "" : r.slice(i + 1).find((v) => String(v).trim() !== "") ?? ""; };
       if (k === "Data") { data = xlDate(at("Data")); comp = String(at("Comprador")).trim(); }
-      else if (k === "Pedido") { cur = [String(at("Pedido")).trim(), data, comp, 0, 0, 0, 0, []]; out.push(cur); col = null; }
+      else if (k === "Pedido") { cur = [String(at("Pedido")).trim(), data, comp, 0, 0, 0, 0, [], String(at("Fornecedor")).trim(), 0, 0]; out.push(cur); col = null; }
+      else if (k === "Total pendente" && cur) cur[10] = num(r.slice(1).find((v) => String(v).trim() !== "") ?? 0);
+      else if (k === "Total entregue" && cur) cur[9] = num(r.slice(1).find((v) => String(v).trim() !== "") ?? 0);
       else if (k === "Desconto" && cur) { cur[5] = num(at("Desconto")); cur[4] = num(at("Outras despesas")); cur[3] = num(at("Total do frete")); }
       else if (k === "Total do pedido" && cur) cur[6] = num(at("Total do pedido"));
       else if (k === "Insumo") { col = {}; r.forEach((v, i) => { const t = String(v).trim(); if (t && !(t in col)) col[t] = i; }); }
@@ -1935,7 +1959,7 @@ ${eap.txt}`;
   const faltaTxt = (r) => r.faltaPartes?.length ? `<div class="hint neg">Vários vencedores: falta o pedido da parte ${r.faltaPartes.map(fmt).join(" e ")}</div>` : "";
   // Bloco que aparece nos detalhes da cotação
   function elosDetail(x) {
-    if (!S.docMeta.PC && !S.docMeta.CT) return "";
+    if (!temDocs()) return "";
     const r = elosOf(x.id);
     let h = `<div class="qc-card" style="margin-bottom:10px"><span class="eyebrow">Pedido / contrato</span>`;
     for (const e of r.certos) h += `<div>${docLine(e.doc)}<br><span class="hint">${esc(e.por)}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(x.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`;
@@ -2065,16 +2089,16 @@ ${eap.txt}`;
   }
   function relInfo() {
     const q = (m) => m ? `${new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : `<span class="hint">não importado</span>`;
-    return [["Saldos de pedidos", S.docMeta.PC, (m) => `${m.n} · ${fmt(m.soma)}`], ["Saldos de contratos", S.docMeta.CT, (m) => `${m.n} · ${fmt(m.soma)}`],
-      ["Itens dos pedidos", S.itMeta, (m) => `${m.n} pedidos`], ["Títulos (notas)", S.nfMeta, (m) => `${m.n} · ${fmt(m.soma)}`], ["Extrato dos contratos", S.exMeta, (m) => `${m.n} contratos`]]
+    const fora = (t) => t === "PC" ? novo(S.itMeta, S.docMeta.PC) : novo(S.exMeta, S.docMeta.CT);
+    return [["Saldos de pedidos", S.docMeta.PC, (m) => `${m.n} · ${fmt(m.soma)}${fora("PC") ? " · substituído pela Relação de Pedidos" : ""}`], ["Saldos de contratos", S.docMeta.CT, (m) => `${m.n} · ${fmt(m.soma)}${fora("CT") ? " · substituído pelo Extrato" : ""}`],
+      ["Relação de Pedidos", S.itMeta, (m) => `${m.n} pedidos`], ["Títulos (notas)", S.nfMeta, (m) => `${m.n} · ${fmt(m.soma)}`], ["Extrato do Fornecedor", S.exMeta, (m) => `${m.n} contratos`]]
       .map(([l, m, f]) => `<dt>${l}</dt><dd>${m ? `${f(m)} · ${q(m)}` : q(m)}</dd>`).join("");
   }
   function renderPed() {
     const box = $("ped-list"); if (!box) return;
-    if (S.docMeta.PC || S.docMeta.CT) fillDocList();
-    const temDocs = S.docMeta.PC || S.docMeta.CT;
+    if (temDocs()) fillDocList();
     $("ped-info").innerHTML = relInfo();
-    if (!temDocs) { box.innerHTML = `<div class="empty">Importe o relatório de pedidos de compra e/ou o de contratos do Sienge (PDF) para ligar cada cotação ao seu pedido.</div>`; $("ped-summary").innerHTML = ""; $("mod-s-ped").textContent = "Pedidos e contratos do Sienge"; return; }
+    if (!temDocs()) { box.innerHTML = `<div class="empty">Importe o relatório de pedidos de compra e/ou o de contratos do Sienge (PDF) para ligar cada cotação ao seu pedido.</div>`; $("ped-summary").innerHTML = ""; $("mod-s-ped").textContent = "Pedidos e contratos do Sienge"; return; }
     const L = pedLists();
     const soma = (arr, f) => arr.reduce((t, x) => t + (Number(f(x)) || 0), 0);
     const manual = L.ok.filter((r) => r.r.certos.some((e) => e.manual)).length;
@@ -2415,7 +2439,7 @@ ${eap.txt}`;
     const m = S.nfMeta;
     $("nf-info").innerHTML = relInfo();
     if (!m) { box.innerHTML = `<div class="empty">Importe o relatório "Títulos por Data" (Excel) no módulo 2, em "Importar do Sienge".</div>`; $("nf-summary").innerHTML = ""; $("mod-s-nf").textContent = "Notas do Sienge"; return; }
-    if (!(S.docMeta.PC || S.docMeta.CT)) { box.innerHTML = `<div class="empty">Importe também os pedidos e contratos no módulo 2.</div>`; $("nf-summary").innerHTML = ""; return; }
+    if (!temDocs()) { box.innerHTML = `<div class="empty">Importe também os pedidos e contratos no módulo 2.</div>`; $("nf-summary").innerHTML = ""; return; }
     const A = nfAnalise();
     const soma = (l, f) => A ? l.reduce((t, x) => t + (f(x) || 0), 0) : 0;
     const L = {
@@ -2445,6 +2469,7 @@ ${eap.txt}`;
       (x.viaEx ? `<div class="hint">${fmt(x.viaEx)} em notas lançadas sem o nº do contrato, achadas pelo extrato</div>` : "") +
       (x.st === "acima" ? (() => { const tp = {}; for (const t of x.tits) if (t.tipo !== "GUIA" && t.tipo !== "CAU") tp[t.tipo] = (tp[t.tipo] || 0) + t.parte; const ks = Object.keys(tp); return ks.length > 1 ? `<div class="hint">por tipo: ${ks.map((k) => `${esc(k)} ${fmt(tp[k])}`).join(" · ")}</div>` : ""; })() : "") +
       (x.st === "okfrete" ? `<div class="hint">nota acima do entregue só pelo frete/outras despesas do pedido (${fmt(x.extra)})</div>` : "") +
+      (x.d.tipo === "CT" && x.d.ex ? `<div class="row" style="margin-top:4px"><label class="hint" style="display:flex;gap:6px;align-items:center">Situação <select data-sit="${esc(x.d.id)}" style="width:auto">${["", "Concluído", "Rescindido"].map((o) => `<option value="${o}"${(S.situacao || {})[x.d.id] === o || (!o && !(S.situacao || {})[x.d.id]) ? " selected" : ""}>${o || `automática (${esc(x.d.sit)})`}</option>`).join("")}</select></label></div>` : "") +
       (x.ex ? `<div class="hint">Extrato: ${x.ex[6].length} medições · medido ${fmt(x.ex[8])} · liberado ${fmt(x.ex[10])}${x.ex[9] ? ` · caução ${fmt(x.ex[9])}` : ""}${x.ex[5] ? ` · aditivos: ${esc(x.ex[5])}` : ""}</div>` +
         `<details><summary class="hint">ver medições</summary>${x.ex[6].map((m) => `<div class="hint">Medição ${m[0]} · ${esc(m[1])} · <span class="num">${fmt(m[4])}</span>${m[3] ? ` (reajuste ${fmt(m[3])})` : ""}${m[5] ? ` · caução ${fmt(m[5])}` : ""}</div>`).join("")}</details>` : "") +
       (x.fin ? `<div class="hint${x.st === "okfin" ? "" : " neg"}">${x.st === "okfin" ? `Fecha com ${fmt(x.fin.total)} lançados pelo financeiro sem o nº do ${x.d.tipo === "CT" ? "contrato" : "pedido"}` : `O mesmo fornecedor tem ${fmt(x.fin.total)} lançados pelo financeiro sem nº de pedido/contrato`}</div>` +
@@ -2480,6 +2505,13 @@ ${eap.txt}`;
   }
   $("nf-summary").addEventListener("click", (ev) => { const b = ev.target.closest("[data-nf]"); if (!b) return; S.nfF = b.dataset.nf; try { localStorage.setItem("cc-nff", S.nfF); } catch {} renderNf(); });
   $("nf-q").addEventListener("input", () => renderNf());
+  // situação do contrato marcada por você (o extrato não diz se foi concluído ou rescindido)
+  $("nf-list").addEventListener("change", async (ev) => {
+    const sel = ev.target.closest("[data-sit]"); if (!sel || !S.db) return;
+    const id = sel.dataset.sit, v = sel.value;
+    try { await S.db.doc("config/situacao").set({ ...(S.situacao || {}), [id]: v || null }); }
+    catch (e) { alert(errText(e)); }
+  });
 
 
   // ---------- banco de dados ----------
@@ -2512,10 +2544,11 @@ ${eap.txt}`;
       for (const d of snap.docs) { const t = d.id.slice(0, 2); if (S.docParts[t]) S.docParts[t].set(d.id, d.data().rows || []); }
       S.docVer++; renderAll(); fillDocList();
     });
-    db.doc("config/itens").onSnapshot((d) => { S.itMeta = d.exists ? d.data() : null; S.itMap = null; renderPed(); renderNf(); });
-    db.collection("itens").limit(100).onSnapshot((snap) => { S.itParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.itMap = null; renderPed(); renderNf(); });
-    db.doc("config/extrato").onSnapshot((d) => { S.exMeta = d.exists ? d.data() : null; S.exVer++; renderPed(); renderNf(); });
-    db.collection("extrato").limit(100).onSnapshot((snap) => { S.exParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.exVer++; renderNf(); });
+    db.doc("config/itens").onSnapshot((d) => { S.itMeta = d.exists ? d.data() : null; S.itMap = null; S.docVer++; renderAll(); });
+    db.collection("itens").limit(100).onSnapshot((snap) => { S.itParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.itMap = null; S.docVer++; renderAll(); });
+    db.doc("config/extrato").onSnapshot((d) => { S.exMeta = d.exists ? d.data() : null; S.exVer++; S.docVer++; renderAll(); });
+    db.doc("config/situacao").onSnapshot((d) => { S.situacao = d.exists ? d.data() : {}; S.docVer++; renderAll(); });
+    db.collection("extrato").limit(100).onSnapshot((snap) => { S.exParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.exVer++; S.docVer++; renderAll(); });
     db.doc("config/nf").onSnapshot((d) => { S.nfMeta = d.exists ? d.data() : null; S.nfVer++; renderPed(); renderNf(); });
     db.collection("nf").limit(100).onSnapshot((snap) => { S.nfParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.nfVer++; renderNf(); });
     db.doc("config/elos").onSnapshot((d) => { S.elos = d.exists ? d.data() : { links: [], rej: [] }; renderAll(); });
