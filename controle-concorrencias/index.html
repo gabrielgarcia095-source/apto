@@ -151,6 +151,8 @@ dl.kv dd { margin: 0; }
 @media (max-width: 900px) { .qc-res { grid-template-columns: minmax(0, 1fr); } }
 .qtable { min-width: 760px; }
 .qtable td { vertical-align: middle; }
+.qtable tr.qrow { cursor: pointer; }
+.qtable tr.qrow:hover { background: var(--row-hover); }
 .qc-warn { background: var(--warn-bg); border-radius: 6px; padding: 6px 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -163,9 +165,11 @@ dl.kv dd { margin: 0; }
       <p>Cadastre cada cotação aprovada. O site compara com a planilha de orçamento importada e mostra o que já foi lançado, o que falta e onde o valor diverge.</p>
     </div>
     <div class="row">
-      <button class="btn primary" id="btn-falta" type="button" hidden>Baixar o que falta lançar (.xlsx)</button>
+      <button class="btn primary" id="btn-copia" type="button">Copiar o que falta lançar</button>
+      <button class="btn" id="btn-falta" type="button" hidden>Baixar o que falta lançar (.xlsx)</button>
       <button class="btn" id="btn-export" type="button" hidden>Baixar planilha completa (.xlsx)</button>
     </div>
+    <div class="msg" id="top-msg" role="status" style="flex-basis:100%; text-align:right"></div>
   </header>
 
   <div class="notice" id="notice" hidden></div>
@@ -858,6 +862,28 @@ dl.kv dd { margin: 0; }
 
   // ---------- exportação ----------
   // Só as cotações que ainda não aparecem na planilha de orçamento, no formato da aba LANÇAMENTOS
+  // Todas as linhas que ainda faltam na planilha de orçamento, já na ordem das colunas D a G da aba LANÇAMENTOS
+  $("btn-copia").addEventListener("click", () => {
+    const m = $("top-msg"); m.className = "msg";
+    const falta = D.rows.filter((x) => x.st === "FALTA LANÇAR").sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+    const linhas = [], semSug = [], naoConf = new Set();
+    for (const x of falta) {
+      const ls = (x.qc?.lancamentos || []).filter((l) => leafOk(l.eap));
+      if (!ls.length) { semSug.push(x.num); continue; }
+      if (!x.qc.confirmadoEm) naoConf.add(x.num);
+      linhas.push(sugTsv(ls, x.num));
+    }
+    if (!falta.length) { m.textContent = "Nada para lançar: todas as cotações já estão na planilha de orçamento."; return; }
+    const avisos = [];
+    if (semSug.length) avisos.push(`${semSug.length} cotação(ões) sem item da EAP ficaram de fora (${semSug.slice(0, 8).join(", ")}${semSug.length > 8 ? "…" : ""})`);
+    if (naoConf.size) avisos.push(`${naoConf.size} com sugestão não confirmada (${[...naoConf].slice(0, 8).join(", ")}${naoConf.size > 8 ? "…" : ""})`);
+    if (!linhas.length) { m.className = "msg err"; m.textContent = "Nenhuma cotação pendente tem item da EAP definido. " + avisos.join(". ") + "."; return; }
+    const n = linhas.join("\n").split("\n").length;
+    copyText(linhas.join("\n"), m).then(() => {
+      if (!m.querySelector("textarea")) m.textContent = `${n} linha(s) copiada(s). Cole na coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre.${avisos.length ? " Atenção: " + avisos.join("; ") + "." : ""}`;
+    });
+  });
+
   $("btn-falta").addEventListener("click", async () => {
     const dl = await claude.use("downloads"); if (!dl) return;
     const head = ["ITEM", "DESCRIÇÃO DA CONTRATAÇÃO", "Nº COTAÇÃO", "VALOR CONTRATADO", "CÓDIGO EAP", "MACRO ITEM", "SUB ITEM", "OBSERVAÇÃO"];
@@ -1014,7 +1040,16 @@ dl.kv dd { margin: 0; }
       `<div class="hint">${isQ(ctx) ? "Corrija o que precisar antes de salvar." : c?.qc?.confirmadoEm ? `Confirmada em ${new Date(c.qc.confirmadoEm).toLocaleDateString("pt-BR")}.` : "Ainda não confirmada."} Para colar: coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre.</div>` +
       `<div class="msg" id="sm-${esc(ctx)}" role="status"></div>`;
   }
-  function rerenderSug(ctx) { if (isQ(ctx)) renderQueue(); else renderTable(); }
+  // Ao sair de um campo clicando num botão, o "change" chega no meio do clique: se a tela for
+  // redesenhada nesse instante o clique se perde. Então espera o clique terminar.
+  let pointerDown = false, pendingSug = null;
+  document.addEventListener("pointerdown", () => { pointerDown = true; }, true);
+  document.addEventListener("pointerup", () => setTimeout(() => {
+    pointerDown = false;
+    if (pendingSug != null) { const c = pendingSug; pendingSug = null; rerenderSugNow(c); }
+  }, 0), true);
+  function rerenderSugNow(ctx) { if (isQ(ctx)) renderQueue(); else renderTable(); }
+  function rerenderSug(ctx) { if (pointerDown) pendingSug = ctx; else rerenderSugNow(ctx); }
 
   async function sugXlsx(lancs, numero, msgEl) {
     const dl = await claude.use("downloads");
@@ -1220,7 +1255,7 @@ ${eap.txt}`;
         Q.items.map((it) => {
           const [lbl, cls] = ST[it.status];
           const conf = it.status === "pronto" && (it.duvida || it.duvidaEap || (it.lancs || []).some((l) => !leafOk(l.eap))) ? ` <span class="dup" title="Tem dúvida para revisar">revisar</span>` : "";
-          return `<tr class="${Q.open === it.key ? "sel" : ""}"><td class="obs">${esc(it.arquivo)}</td><td class="num">${esc(it.numero || "")}</td><td>${esc(it.descricao || "")}</td>` +
+          return `<tr class="qrow${Q.open === it.key ? " sel" : ""}" data-k="${it.key}"><td class="obs">${esc(it.arquivo)}</td><td class="num">${esc(it.numero || "")}</td><td>${esc(it.descricao || "")}</td>` +
             `<td>${esc(it.venc.map((v) => v.fornecedor).join("; "))}</td><td class="r num">${it.total == null ? "—" : fmt(it.total)}</td>` +
             `<td><span class="pill ${cls}">${lbl}</span>${conf}${it.status === "erro" ? `<div class="hint neg">${esc(it.erro)}</div>` : ""}</td>` +
             `<td><div class="row">${it.status === "erro" ? `<button class="btn" type="button" data-q="retry" data-k="${it.key}">Tentar de novo</button>` : ""}` +
@@ -1346,7 +1381,14 @@ ${eap.txt}`;
   }
 
   $("qc-out").addEventListener("click", async (ev) => {
-    const b = ev.target.closest("[data-q]"); if (!b) return;
+    let b = ev.target.closest("[data-q]");
+    if (!b) {
+      // clique em qualquer parte da linha = Revisar
+      const row = ev.target.closest("tr.qrow"); if (!row) return;
+      const it0 = Q.items.find((x) => x.key === row.dataset.k);
+      if (it0 && it0.total != null) { Q.open = Q.open === it0.key ? null : it0.key; renderQueue(); }
+      return;
+    }
     const act = b.dataset.q, it = Q.items.find((x) => x.key === b.dataset.k);
     if (act === "stop") { Q.ctl?.abort(); return; }
     if (act === "clear") { Q.ctl?.abort(); Q.items = []; Q.open = null; renderQueue(); return; }
