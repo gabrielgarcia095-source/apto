@@ -1575,7 +1575,10 @@ ${eap.txt}`;
   function cotAmounts(c) {
     const out = [];
     if (c.valor) out.push({ v: Math.round(c.valor * 100) / 100, k: "aprovado" });
-    if (c.formula) {
+    // conta só com "+": vários vencedores, um pedido/contrato por parte
+    if (c.formula && /\+/.test(c.formula) && !/[-*/]/.test(c.formula)) {
+      for (const t of String(c.formula).match(/[\d.,]+/g) || []) { const p = parseValor(t); if (p.valor) out.push({ v: Math.round(p.valor * 100) / 100, k: "uma das partes da conta (vários vencedores)", parte: true }); }
+    } else if (c.formula) {
       const t = String(c.formula).match(/[\d.,]+/);
       if (t) { const p = parseValor(t[0]); if (p.valor && Math.abs(p.valor - (c.valor || 0)) > 0.009) out.push({ v: p.valor, k: "valor bruto (antes do desconto)" }); }
     }
@@ -1650,16 +1653,17 @@ ${eap.txt}`;
     const JANELA = 75;
     const add = (m, k, v) => (m.get(k) || m.set(k, new Set()).get(k)).add(v);
     const exCot = new Map(), exDoc = new Map(), okCot = new Map(), okDoc = new Map();
+    const ck = (x) => x.a.parte ? `${x.c.id}|${x.a.v}` : x.c.id; // parte de conta: unicidade por parte
     for (const x of cand) if (x.exato && x.princ) {
-      add(exCot, x.c.id, x.d.id); add(exDoc, x.d.id, x.c.id);
-      if (x.dd == null || x.dd <= JANELA) { add(okCot, x.c.id, x.d.id); add(okDoc, x.d.id, x.c.id); }
+      add(exCot, ck(x), x.d.id); add(exDoc, x.d.id, x.c.id);
+      if (x.dd == null || x.dd <= JANELA) { add(okCot, ck(x), x.d.id); add(okDoc, x.d.id, x.c.id); }
     }
     const sz = (m, k) => m.get(k)?.size || 0;
     for (const x of cand) {
       if (docTaken.has(x.d.id) || cotTaken.has(x.c.id)) continue;
-      const unico = sz(exCot, x.c.id) === 1 && sz(exDoc, x.d.id) === 1;
+      const unico = sz(exCot, ck(x)) === 1 && sz(exDoc, x.d.id) === 1;
       const dataOk = x.dd != null && x.dd <= JANELA;
-      const unicoNaData = dataOk && sz(okCot, x.c.id) === 1 && sz(okDoc, x.d.id) === 1;
+      const unicoNaData = dataOk && sz(okCot, ck(x)) === 1 && sz(okDoc, x.d.id) === 1;
       const valorForte = Math.round(x.a.v * 100) % 100 !== 0 || x.a.v >= 5000;
       const contraFornecedor = (x.c.qc?.vencedores || []).length && !x.comum.length;
       // Certo só com valor exato no campo principal, sem fornecedor contrário ao QC, e:
@@ -1680,8 +1684,8 @@ ${eap.txt}`;
       if (r.certos.length || !r.sugestoes.length || docTaken.has(x.d.id) || r.sugestoes.some((s) => s.doc.id === x.d.id)) continue;
       if (r.sugestoes.length < 4) r.sugestoes.push({ doc: x.d, por: x.por + " · alternativa", score: x.score - 1, alt: true });
     }
-    // ---- somas: um contrato/pedido que junta mais de uma cotação ----
     const cents = (v) => Math.round(v * 100);
+    // ---- somas: um contrato/pedido que junta mais de uma cotação ----
     const linkedTo = new Map(); // documento -> cotações já ligadas por você
     for (const l of fixedList) (linkedTo.get(l.doc) || linkedTo.set(l.doc, []).get(l.doc)).push(l.cot);
     const cotById = new Map(cotList.map((c) => [c.id, c]));
@@ -1690,6 +1694,31 @@ ${eap.txt}`;
       const r = res.get(c.id); if (r.sugestoes.some((s) => s.doc.id === d.id)) return;
       r.sugestoes.push({ doc: d, por, score, soma: true, parte: Math.round(parte * 100) / 100 });
     };
+    // ---- vários vencedores: conta "a + b + c" na cotação, um pedido por fornecedor ----
+    // Achado o pedido de uma parte, os das outras partes têm de ter o valor exato e data a até 10 dias dele.
+    for (const c of cotList) {
+      if (!c.formula || /[-*/]/.test(c.formula) || !/\+/.test(c.formula)) continue;
+      const r = res.get(c.id); if (!r.certos.length) continue;
+      const partes = (String(c.formula).match(/[\d.,]+/g) || []).map((t) => parseValor(t).valor).filter(Boolean);
+      if (partes.length < 2) continue;
+      const usados = new Set(r.certos.map((x) => x.doc.id));
+      const resto = [...partes];
+      const tira = (v, tol) => { const i = resto.findIndex((p) => Math.abs(p - v) <= tol); if (i < 0) return false; resto.splice(i, 1); return true; };
+      const ancoras = r.certos.filter((x) => tira(efetivo(x.doc), 0.05) || tira(x.doc.prim, 0.05));
+      if (!ancoras.length || !resto.length) continue;
+      const base = parseDate(ancoras[0].doc.data);
+      const falta = [];
+      for (const v of resto) {
+        const ach = free.filter((d) => !usados.has(d.id) && !docTaken.has(d.id) && !isRej(d, c) && Math.abs(d.prim - v) < 0.005
+          && Math.abs(parseDate(d.data) - base) / DAY <= 10);
+        if (ach.length === 1) {
+          const d = ach[0]; docTaken.add(d.id); usados.add(d.id);
+          r.certos.push({ doc: d, por: `valor exato: total do pedido = parte ${fmt(v)} da conta da cotação (vários vencedores) · mesma época do ${ancoras[0].doc.id}`, auto: true });
+        } else if (ach.length > 1) for (const d of ach) sugSoma(d, c, `parte ${fmt(v)} da conta da cotação (vários vencedores) · há ${ach.length} pedidos com este valor`, v, 46);
+        else falta.push(v);
+      }
+      if (falta.length) r.faltaPartes = falta;
+    }
     // (a) cotações inteiras que somam o documento (ex.: contrato + "AD COT."), entre as que não têm nada
     //     ou junto das que você já ligou a este documento
     const semNada = cotList.filter((c) => c.valor > 0 && !res.get(c.id).certos.length && !res.get(c.id).sugestoes.length);
@@ -1810,6 +1839,7 @@ ${eap.txt}`;
       ` <span class="hint">(${lbl2} <span class="num">${fmt(d.sec)}</span>)</span> <span class="pill ${sitCls(d.sit)}">${esc(d.sit)}</span>` +
       (semEntrega(d) ? ` <span class="pill s-DIVERGENCIA">nada ${lbl2}</span>` : saldoCanc(d) > 0.009 ? ` <span class="hint neg">saldo cancelado ${fmt(saldoCanc(d))}</span>` : "");
   }
+  const faltaTxt = (r) => r.faltaPartes?.length ? `<div class="hint neg">Vários vencedores: falta o pedido da parte ${r.faltaPartes.map(fmt).join(" e ")}</div>` : "";
   // Bloco que aparece nos detalhes da cotação
   function elosDetail(x) {
     if (!S.docMeta.PC && !S.docMeta.CT) return "";
@@ -1817,6 +1847,7 @@ ${eap.txt}`;
     let h = `<div class="qc-card" style="margin-bottom:10px"><span class="eyebrow">Pedido / contrato</span>`;
     for (const e of r.certos) h += `<div>${docLine(e.doc)}<br><span class="hint">${esc(e.por)}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(x.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`;
     for (const s of r.sugestoes) h += `<div>Sugestão: ${docLine(s.doc)}<br><span class="hint">${esc(s.por)}</span> <button class="btn primary" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(x.id)}">Confirmar</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(x.id)}">Não é este</button></div>`;
+    h += faltaTxt(r);
     if (!r.certos.length && !r.sugestoes.length) h += `<div class="hint">Nenhum pedido ou contrato encontrado para esta cotação.</div>`;
     h += `<div class="row"><input list="doc-dl" id="lk-doc-${esc(x.id)}" placeholder="Vincular outro: PC 1234 ou CT/150" style="max-width:360px"><button class="btn" type="button" data-el="add" data-cot="${esc(x.id)}">Vincular</button></div>`;
     return h + `<div class="msg" id="el-msg-${esc(x.id)}" role="status"></div></div>`;
@@ -1836,6 +1867,8 @@ ${eap.txt}`;
     // opt.keep: o documento continua nas outras cotações (soma de cotações / aditivo); opt.parte: quanto desta cotação está nele
     e.links = e.links.filter((l) => opt.keep ? !(l.doc === docId && l.cot === cotId) : l.doc !== docId); e.rej = e.rej.filter((l) => !(l.doc === docId && l.cot === cotId));
     e.links.push({ doc: docId, cot: cotId, em: new Date().toISOString(), ...(opt.parte != null ? { parte: opt.parte } : {}) });
+    // documento dividido: quem já estava nele sem parte passa a contar só o aprovado da sua cotação
+    if (opt.keep && opt.parte != null) for (const l of e.links) if (l.doc === docId && l.parte == null && S.cot.get(l.cot)?.valor > 0) l.parte = S.cot.get(l.cot).valor;
   }
   function docIdFrom(v) { const m = String(v).toUpperCase().match(/^\s*(PC\s*\d+|CT\s*\/\s*\d+)/); return m ? m[1].replace(/^PC\s*/, "PC ").replace(/\s*\/\s*/, "/") : ""; }
 
@@ -2010,7 +2043,7 @@ ${eap.txt}`;
       const rows = L.ok.filter((r) => hitC(r.c) || r.r.certos.some((e) => hitD(e.doc)));
       h = tbl(["Cotação", "Aprovado", "Pedido / contrato", "Diferença p/ efetivo"], rows.map((r) => {
         const soma = r.r.certos.reduce((t, e) => t + (e.parte != null ? e.parte : efetivo(e.doc)), 0), dif = Math.round(((r.c.valor || 0) - soma) * 100) / 100;
-        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.r.certos.map((e) => `<div>${docLine(e.doc)}${e.parte != null ? ` <span class="hint">· desta cotação: <b class="num">${fmt(e.parte)}</b></span>` : ""} <span class="hint">· ${esc(e.manual ? "confirmado por você" : "automático")}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(r.c.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("")}</td>` +
+        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${r.r.certos.map((e) => `<div>${docLine(e.doc)}${e.parte != null ? ` <span class="hint">· desta cotação: <b class="num">${fmt(e.parte)}</b></span>` : ""} <span class="hint">· ${esc(e.manual ? "confirmado por você" : "automático")}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(r.c.id)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("")}${faltaTxt(r.r)}</td>` +
           `<td class="r num${dif ? " neg" : ""}">${dif ? fmt(dif) : "—"}</td></tr>`; }), "Nenhuma cotação ligada ainda.");
     }
     box.innerHTML = h;
