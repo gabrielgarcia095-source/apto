@@ -217,6 +217,7 @@ dl.kv dd { margin: 0; }
         <label>Coluna do valor <select id="i-c-val"></select></label>
         <label>Coluna do item (opcional) <select id="i-c-item"></select></label>
         <label>Coluna da descrição (opcional) <select id="i-c-desc"></select></label>
+        <label>Coluna do ID da linha (para manter vínculos) <select id="i-c-id"></select></label>
       </div>
       <div class="msg" id="i-msg" role="status"></div>
       <div class="row"><button class="btn primary" id="i-go" type="button" disabled>Substituir conferência</button></div>
@@ -319,7 +320,9 @@ dl.kv dd { margin: 0; }
     db: null,
     cot: new Map(),           // id -> doc
     confMeta: null,
-    confParts: new Map(),     // "parte-N" -> rows
+    confParts: new Map(),     // "parte-N" -> rows [nº, valor, item, descrição, id]
+    vinc: {},                 // id do lançamento -> { cot, desc }
+    semOpen: null,
     loadedCot: false, loadedConf: false,
     filter: "TODOS", q: "", sort: "ordem",
     editing: null, expanded: null, showAll: false,
@@ -334,22 +337,31 @@ dl.kv dd { margin: 0; }
   }
 
   function compute() {
+    // Lançamento vinculado à mão (por ID + descrição) vale como se tivesse o nº da cotação
     const confBy = new Map();
     for (const r of confRows()) {
-      const k = key(r[0]); if (!k) continue;
+      const v = r[4] != null ? S.vinc[String(r[4])] : null;
+      const linked = !!(v && v.desc === r[3]);
+      const k = linked ? key(v.cot) : key(r[0]); if (!k) continue;
       let g = confBy.get(k); if (!g) confBy.set(k, (g = { total: 0, linhas: [] }));
-      g.total += Number(r[1]) || 0; g.linhas.push(r);
+      const row = r.slice(); row.linked = linked; row.orig = r[0];
+      g.total += Number(r[1]) || 0; g.linhas.push(row);
     }
-    const keyCount = new Map();
-    for (const c of S.cot.values()) { const k = key(c.num); keyCount.set(k, (keyCount.get(k) || 0) + 1); }
+    const keyCount = new Map(), keySum = new Map();
+    for (const c of S.cot.values()) {
+      const k = key(c.num); keyCount.set(k, (keyCount.get(k) || 0) + 1);
+      keySum.set(k, (keySum.get(k) || 0) + (c.valor || 0));
+    }
     const rows = [];
     const counts = Object.fromEntries(STATUS.map((s) => [s.k, { n: 0, v: 0 }]));
     let aprov = 0;
     for (const [id, c] of S.cot) {
       const k = key(c.num);
       const lanc = Math.round((confBy.get(k)?.total || 0) * 100) / 100;
-      const st = statusOf(c.valor, lanc, c.desc);
-      const dif = c.valor == null ? null : Math.round((c.valor - lanc) * 100) / 100;
+      // nº repetido: compara a soma das cotações com esse nº contra o lançado
+      const base = c.valor == null ? null : keyCount.get(k) > 1 ? Math.round(keySum.get(k) * 100) / 100 : c.valor;
+      const st = statusOf(base, lanc, c.desc);
+      const dif = base == null ? null : Math.round((base - lanc) * 100) / 100;
       if (c.valor != null) aprov += c.valor;
       if (counts[st]) { counts[st].n++; counts[st].v += dif || 0; }
       rows.push({ id, ...c, k, lanc, st, dif });
@@ -406,11 +418,12 @@ dl.kv dd { margin: 0; }
     const g = D.confBy.get(x.k);
     const extra = [];
     if (x.formula) extra.push(`Valor calculado de: <span class="num">${esc(x.formula)}</span>`);
-    if ((D.keyCount.get(x.k) || 0) > 1) extra.push(`<span class="dup">Atenção: há mais de uma cotação com o nº ${esc(x.num)}.</span>`);
+    if ((D.keyCount.get(x.k) || 0) > 1) extra.push(`<span class="dup">Há mais de uma cotação com o nº ${esc(x.num)}: a conferência usa a soma delas.</span>`);
     const head = extra.length ? `<div class="hint" style="margin-bottom:6px">${extra.join(" · ")}</div>` : "";
     if (!g) return head + `<div class="hint">Nenhum lançamento com o nº ${esc(x.num)} na planilha de orçamento.</div>`;
-    return head + `<table><thead><tr><th>Item do orçamento</th><th>Descrição da contratação</th><th class="r">Valor</th></tr></thead><tbody>` +
-      g.linhas.map((l) => `<tr><td>${esc(l[2])}</td><td>${esc(l[3])}</td><td class="r num">${fmt(Number(l[1]) || 0)}</td></tr>`).join("") +
+    return head + `<table><thead><tr><th>Item do orçamento</th><th>Descrição da contratação</th><th class="r">Valor</th><th></th></tr></thead><tbody>` +
+      g.linhas.map((l) => `<tr><td>${esc(l[2])}</td><td>${esc(l[3])}</td><td class="r num">${fmt(Number(l[1]) || 0)}</td>` +
+        `<td>${l.linked ? `<span class="hint">vinculado (na planilha: ${esc(l.orig)})</span> <button class="btn" type="button" data-unlink="${esc(l[4])}">Desvincular</button>` : ""}</td></tr>`).join("") +
       `</tbody></table>`;
   }
 
@@ -444,8 +457,18 @@ dl.kv dd { margin: 0; }
     if (!D.sem.length) { tb.innerHTML = `<tr><td colspan="5" class="empty">Todos os números da planilha têm cotação cadastrada.</td></tr>`; return; }
     tb.innerHTML = D.sem.map((g) => {
       const nomes = [...new Set(g.linhas.map((l) => l[3] || l[2]).filter(Boolean))].slice(0, 4).join(" · ");
-      return `<tr><td class="num">${esc(g.k)}</td><td class="r num">${g.linhas.length}</td><td class="r num">${fmt(g.total)}</td><td class="obs">${esc(nomes)}</td>` +
-        `<td><button class="btn" type="button" data-cad="${esc(g.k)}" data-desc="${esc(g.linhas[0]?.[3] || g.linhas[0]?.[2] || "")}" data-val="${g.total}">Cadastrar</button></td></tr>`;
+      const open = S.semOpen === g.k;
+      let h = `<tr><td class="num">${esc(g.k)}</td><td class="r num">${g.linhas.length}</td><td class="r num">${fmt(g.total)}</td><td class="obs">${esc(nomes)}</td>` +
+        `<td><div class="row"><button class="btn" type="button" data-open="${esc(g.k)}">${open ? "Fechar" : "Vincular linhas"}</button>` +
+        `<button class="btn" type="button" data-cad="${esc(g.k)}" data-desc="${esc(g.linhas[0]?.[3] || g.linhas[0]?.[2] || "")}" data-val="${g.total}">Cadastrar</button></div></td></tr>`;
+      if (open) {
+        h += `<tr class="detail"><td colspan="5"><table><thead><tr><th>Item</th><th>Descrição</th><th class="r">Valor</th><th>Vincular à cotação nº</th></tr></thead><tbody>` +
+          g.linhas.map((l) => `<tr><td>${esc(l[2])}</td><td>${esc(l[3])}</td><td class="r num">${fmt(Number(l[1]) || 0)}</td><td>` +
+            (l[4] == null ? `<span class="hint">Reimporte a planilha para poder vincular</span>`
+              : `<div class="row"><input style="width:9rem" id="lk-${esc(l[4])}" placeholder="Ex.: EQ INDIRETA"><button class="btn" type="button" data-link="${esc(l[4])}">Vincular</button></div>`) +
+            `</td></tr>`).join("") + `</tbody></table><div class="msg" id="sem-msg" role="status"></div></td></tr>`;
+      }
+      return h;
     }).join("");
   }
 
@@ -582,6 +605,32 @@ dl.kv dd { margin: 0; }
     updateValorPrev(); updateCheck(); $("f-desc").focus();
   });
 
+  async function saveVinc(next, msgEl, ok) {
+    try { await S.db.doc("config/vinculos").set({ map: next }); if (msgEl) { msgEl.className = "msg"; msgEl.textContent = ok; } }
+    catch (e) { if (msgEl) { msgEl.className = "msg err"; msgEl.textContent = errText(e); } }
+  }
+  function findLine(id) { return confRows().find((r) => String(r[4]) === String(id)); }
+  $("tbody-sem").addEventListener("click", async (ev) => {
+    const o = ev.target.closest("[data-open]");
+    if (o) { S.semOpen = S.semOpen === o.dataset.open ? null : o.dataset.open; renderSem(); return; }
+    const b = ev.target.closest("[data-link]"); if (!b || !S.db) return;
+    const id = b.dataset.link, inp = $("lk-" + id), msg = $("sem-msg");
+    const cot = inp?.value.trim() || "";
+    const k = key(cot);
+    if (!k) { msg.className = "msg err"; msg.textContent = "Digite o nº da cotação."; return; }
+    if (!D.keyCount.has(k)) { msg.className = "msg err"; msg.textContent = `Não existe cotação nº ${cot} cadastrada.`; return; }
+    const r = findLine(id); if (!r) return;
+    b.disabled = true;
+    await saveVinc({ ...S.vinc, [String(id)]: { cot, desc: r[3] } }, msg, `Lançamento vinculado à cotação ${cot}.`);
+    b.disabled = false;
+  });
+  $("tbody").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-unlink]"); if (!b || !S.db) return;
+    ev.stopPropagation();
+    const next = { ...S.vinc }; delete next[b.dataset.unlink];
+    await saveVinc(next, $("f-msg"), "Vínculo desfeito.");
+  }, true);
+
   // ---------- abas ----------
   function selectTab(t) {
     for (const n of ["cot", "conf", "sem"]) { $("tab-" + n).setAttribute("aria-selected", String(n === t)); $("view-" + n).hidden = n !== t; }
@@ -609,13 +658,14 @@ dl.kv dd { margin: 0; }
     const width = Math.max(head.length, ...rows.slice(hdr, hdr + 50).map((r) => r?.length || 0));
     const opts = ['<option value="">—</option>'];
     for (let i = 0; i < width; i++) opts.push(`<option value="${i}">${colName(i)} · ${esc(String(head[i] ?? "").slice(0, 40))}</option>`);
-    for (const id of ["i-c-num", "i-c-val", "i-c-item", "i-c-desc"]) $(id).innerHTML = opts.join("");
+    for (const id of ["i-c-num", "i-c-val", "i-c-item", "i-c-desc", "i-c-id"]) $(id).innerHTML = opts.join("");
     const H = head.map((c) => String(c ?? "").toUpperCase());
     const find = (...res) => { for (const re of res) { const i = H.findIndex((c) => re.test(c)); if (i >= 0) return String(i); } return ""; };
     $("i-c-num").value = find(/N.{0,3}COTA/, /COTA/);
     $("i-c-val").value = find(/VALOR CONTRATADO/, /VALOR/);
     $("i-c-item").value = find(/^ITEM/, /ITEM/);
     $("i-c-desc").value = find(/DESCRI.*CONTRAT/, /DESCRI/);
+    $("i-c-id").value = find(/^ID$/);
     preview();
   }
 
@@ -625,7 +675,7 @@ dl.kv dd { margin: 0; }
     if (!WB) return;
     const cn = $("i-c-num").value, cv = $("i-c-val").value;
     if (cn === "" || cv === "") { $("i-msg").textContent = "Escolha as colunas do nº da cotação e do valor."; return; }
-    const ci = $("i-c-item").value, cd = $("i-c-desc").value;
+    const ci = $("i-c-item").value, cd = $("i-c-desc").value, cid = $("i-c-id").value;
     const rows = sheetRows($("i-sheet").value);
     const hdr = Math.max(0, (parseInt($("i-header").value, 10) || 1) - 1);
     const out = [];
@@ -639,7 +689,8 @@ dl.kv dd { margin: 0; }
       v = Number(v) || 0;
       total += v;
       out.push([typeof n === "number" ? String(n) : String(n).trim(), Math.round(v * 100) / 100,
-        ci === "" ? "" : String(r[+ci] ?? "").trim(), cd === "" ? "" : String(r[+cd] ?? "").trim()]);
+        ci === "" ? "" : String(r[+ci] ?? "").trim(), cd === "" ? "" : String(r[+cd] ?? "").trim(),
+        cid === "" || r[+cid] == null ? null : String(r[+cid]).trim()]);
     }
     if (!out.length) { $("i-msg").textContent = "Nenhuma linha com nº de cotação nessa coluna."; return; }
     pending = { rows: out, total: Math.round(total * 100) / 100, aba: $("i-sheet").value };
@@ -668,7 +719,7 @@ dl.kv dd { margin: 0; }
   });
   $("i-sheet").addEventListener("change", () => { $("i-header").value = guessHeader(sheetRows($("i-sheet").value)) + 1; fillCols(); });
   $("i-header").addEventListener("change", fillCols);
-  for (const id of ["i-c-num", "i-c-val", "i-c-item", "i-c-desc"]) $(id).addEventListener("change", preview);
+  for (const id of ["i-c-num", "i-c-val", "i-c-item", "i-c-desc", "i-c-id"]) $(id).addEventListener("change", preview);
 
   $("i-go").addEventListener("click", async () => {
     if (!pending || !S.db) return;
@@ -699,8 +750,9 @@ dl.kv dd { margin: 0; }
     const rows = [...D.rows].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
     const cot = [["Nº COTAÇÃO", "DESCRIÇÃO", "VALOR APROVADO", "OBSERVAÇÕES", "VALOR PLANILHA ORÇAMENTO", "VALIDAÇÃO", "DIFERENÇA"]]
       .concat(rows.map((x) => [/^\d+$/.test(x.num) ? Number(x.num) : x.num, x.desc, x.valor, x.obs || null, x.lanc, x.st, x.dif]));
-    const conf = [["Nº COTAÇÃO", "VALOR", "ITEM", "DESCRIÇÃO DA CONTRATAÇÃO"]]
-      .concat(confRows().map((r) => [/^\d+$/.test(r[0]) ? Number(r[0]) : r[0], r[1], r[2], r[3]]));
+    const conf = [["ID", "Nº COTAÇÃO", "VINCULADO À COTAÇÃO", "VALOR", "ITEM", "DESCRIÇÃO DA CONTRATAÇÃO"]]
+      .concat(confRows().map((r) => { const v = r[4] != null ? S.vinc[String(r[4])] : null;
+        return [r[4] ?? null, /^\d+$/.test(r[0]) ? Number(r[0]) : r[0], v && v.desc === r[3] ? v.cot : null, r[1], r[2], r[3]]; }));
     const sem = [["Nº NA PLANILHA", "LANÇAMENTOS", "VALOR LANÇADO"]].concat(D.sem.map((g) => [g.k, g.linhas.length, g.total]));
     const wb = XLSX.utils.book_new();
     const w1 = XLSX.utils.aoa_to_sheet(cot); w1["!cols"] = [{ wch: 12 }, { wch: 48 }, { wch: 16 }, { wch: 40 }, { wch: 16 }, { wch: 18 }, { wch: 14 }];
@@ -733,6 +785,7 @@ dl.kv dd { margin: 0; }
       if (first) { first = false; if (!S.editing) resetForm(true); }
     }, (e) => setMsg(errText(e), true));
     db.doc("config/conferencia").onSnapshot((d) => { S.confMeta = d.exists ? d.data() : null; renderAll(); });
+    db.doc("config/vinculos").onSnapshot((d) => { S.vinc = (d.exists && d.data().map) || {}; renderAll(); });
     db.collection("conferencia").limit(100).onSnapshot((snap) => {
       S.confParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []]));
       S.loadedConf = true; renderAll();
