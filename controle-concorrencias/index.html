@@ -353,6 +353,11 @@ dl.kv dd { margin: 0; }
       <div class="msg" id="nf-msg" role="status"></div>
       <div class="row"><button class="btn primary" type="button" id="nf-go">Importar</button></div>
       <dl class="kv" id="nf-info"></dl>
+      <h2 style="margin-top:6px">Contratos <span class="hint">(opcional)</span></h2>
+      <p class="hint" style="margin:0">Relatório "Extrato do Fornecedor" em Excel: medições, liberações, caução e aditivos de cada contrato. Liga também as notas lançadas sem o nº do contrato.</p>
+      <label>Extrato do Fornecedor (Excel) <input type="file" id="ex-file" accept=".xlsx,.xls"></label>
+      <div class="row"><button class="btn" type="button" id="ex-go">Importar extrato</button></div>
+      <div class="msg" id="ex-msg" role="status"></div>
       <p class="hint" style="margin:0">Notas = NF, NF-e, NFS-e, fatura, recibo, nota de débito e cupom. Guias de imposto e caução aparecem à parte e não entram no faturado. Uma nota com dois pedidos é dividida entre eles pelo valor entregue.</p>
     </div>
     <div style="display:grid; gap:10px; min-width:0">
@@ -452,7 +457,7 @@ dl.kv dd { margin: 0; }
     qcPending: null,
     sugDraft: {},
     docMeta: { PC: null, CT: null }, docParts: { PC: new Map(), CT: new Map() }, docVer: 0, elos: null,
-    itMeta: null, itParts: new Map(), itMap: null,
+    itMeta: null, itParts: new Map(), itMap: null, exMeta: null, exParts: new Map(), exVer: 0,
     nfMeta: null, nfParts: new Map(), nfVer: 0, nfF: (() => { try { return localStorage.getItem("cc-nff") || "div"; } catch { return "div"; } })(),
     pedF: (() => { try { return localStorage.getItem("cc-pedf") || "sug"; } catch { return "sug"; } })(),             // edições da sugestão de uma cotação salva, ainda não gravadas          // leitura do QC que vai junto quando a cotação for salva
     semOpen: null,
@@ -2243,6 +2248,54 @@ ${eap.txt}`;
     b.disabled = false;
   });
 
+  // Extrato do Fornecedor (contratos): [id, fornecedor, valor, início, término, aditivos, medições, liberações, total medido, caução, total liberado]
+  //   medição: [nº, data, total dos itens, reajuste, total bruto, caução]; liberação: [documento, vencimento, bruto, impostos, desconto, líquido]
+  function parseExtrato(wb) {
+    const A = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
+    if (!A.slice(0, 6).some((r) => r.some((v) => /Extrato do Fornecedor/i.test(String(v))))) throw new Error('Este arquivo não é o "Extrato do Fornecedor".');
+    const num = (v) => typeof v === "number" ? v : (parseValor(String(v ?? "")).valor || 0);
+    const out = []; let forn = "", cur = null, col = null, lastDoc = "";
+    for (const r of A) {
+      const k = String(r[0]).trim();
+      const at = (lbl) => { const i = r.findIndex((v) => String(v).trim() === lbl); return i < 0 ? "" : r.slice(i + 1).find((v) => String(v).trim() !== "") ?? ""; };
+      if (k === "Fornecedor") forn = String(at("Fornecedor")).trim();
+      else if (k === "Contrato") { cur = [String(at("Contrato")).replace(/\s+/g, ""), forn, num(at("Valor")), xlDate(at("Início")), xlDate(at("Término")), "", [], [], 0, 0, 0]; out.push(cur); col = null; lastDoc = ""; }
+      else if (k === "Aditivos" && cur) cur[5] = String(at("Aditivos")).replace(/Obra\s*\d+\s*:\s*;?/gi, "").replace(/\s+/g, " ").trim();
+      else if (k === "Obra" && r.some((v) => String(v).trim() === "Documento")) { col = {}; r.forEach((v, i) => { const t = String(v).trim(); if (t && !(t in col)) col[t] = i; }); }
+      else if (k === "Total medido" && cur && col) { cur[8] = num(r[col["Total bruto"]]); cur[9] = num(r[col["Caução"]]); cur[10] = num(r[col["Valor bruto"]]); }
+      else if (cur && col) {
+        const n = r[col["Nº"]];
+        if (n !== "" && /^\d+$/.test(String(n).trim())) cur[6].push([Number(n), xlDate(r[col.Data]), num(r[col["Total dos itens"]]), num(r[col.Reajuste]), num(r[col["Total bruto"]]), num(r[col["Caução"]])]);
+        const vb = r[col["Valor bruto"]];
+        if (vb !== "" && vb != null && !isNaN(num(vb))) {
+          const doc = String(r[col.Documento] ?? "").replace(/\s+/g, " ").trim() || lastDoc; lastDoc = doc;
+          if (doc) cur[7].push([doc, xlDate(r[col.Vencimento]), num(vb), num(r[col.Impostos]), num(r[col.Desconto]), num(r[col["Valor líquido"]])]);
+        }
+      }
+    }
+    return out;
+  }
+  function exRows() { const out = []; for (let i = 0; i < (S.exMeta?.partes ?? 0); i++) out.push(...(S.exParts.get(`parte-${i}`) || [])); return out; }
+  $("ex-go").addEventListener("click", async () => {
+    const f = $("ex-file").files[0], m = $("ex-msg"), b = $("ex-go");
+    if (!f) { m.className = "msg err"; m.textContent = "Escolha o arquivo primeiro."; return; }
+    if (!S.db) { m.className = "msg err"; m.textContent = "Banco de dados indisponível."; return; }
+    b.disabled = true; m.className = "msg"; m.textContent = "Lendo o arquivo…";
+    try {
+      const rows = parseExtrato(XLSX.read(await f.arrayBuffer(), { type: "array" }));
+      if (!rows.length) throw new Error("Nenhum contrato encontrado no arquivo.");
+      const enc = new TextEncoder(), partes = []; let cur = [], tam = 0; // limite do banco: 256 KB por documento
+      for (const r of rows) { const n = enc.encode(JSON.stringify(r)).length + 1; if (tam + n > 180000 && cur.length) { partes.push(cur); cur = []; tam = 0; } cur.push(r); tam += n; }
+      if (cur.length) partes.push(cur);
+      const old = S.exMeta?.partes ?? 0;
+      for (let i = 0; i < partes.length; i++) await S.db.doc(`extrato/parte-${i}`).set({ rows: partes[i] });
+      await S.db.doc("config/extrato").set({ arquivo: f.name, importadoEm: new Date().toISOString(), n: rows.length, partes: partes.length });
+      for (let i = partes.length; i < old; i++) await S.db.doc(`extrato/parte-${i}`).delete();
+      m.className = "msg"; m.innerHTML = `<span style="color:var(--ok)">Importado: ${rows.length} contratos, ${rows.reduce((t, r) => t + r[6].length, 0)} medições, ${rows.reduce((t, r) => t + r[7].length, 0)} liberações.</span>`;
+    } catch (e) { m.className = "msg err"; m.textContent = e?.code ? errText(e) : (e?.message || String(e)); }
+    b.disabled = false;
+  });
+
   // ---------- Pedido × Nota fiscal (relatório "Títulos por Data" do Sienge) ----------
   // linha guardada: [título, credor, documento, origem, CT/OC, emissão, vencimento, bruto, imposto, líquido]
   const NF_COLS = ["Titulo", "Credor", "Documento", "Or", "CT/OC", "Emis.NF", "Vencto", "Valor bruto", "Imposto", "Valor líquido"];
@@ -2282,14 +2335,25 @@ ${eap.txt}`;
 
   let nfCache = { v: -1, d: -1, e: null, c: null, out: null };
   function nfAnalise() {
-    if (nfCache.v === S.nfVer && nfCache.d === S.docVer && nfCache.e === S.elos && nfCache.c === S.cot) return nfCache.out;
+    if (nfCache.v === S.nfVer && nfCache.d === S.docVer && nfCache.e === S.elos && nfCache.c === S.cot && nfCache.x === S.exVer && nfCache.i === S.itParts) return nfCache.out;
+    // liberações do extrato: documento -> contratos (para ligar notas lançadas sem o nº do contrato)
+    const dn = (s) => String(s).replace(/\s+/g, "").toUpperCase();
+    const ex = new Map(exRows().map((c) => [c[0], c])), libIdx = new Map();
+    for (const c of ex.values()) for (const l of c[7]) (libIdx.get(dn(l[0])) || libIdx.set(dn(l[0]), []).get(dn(l[0]))).push({ ct: c[0], v: l[2], forn: c[1] });
     const { docs, linkedDocs } = elosAll();
     const byId = new Map(docs.map((d) => [d.id, d]));
     const por = new Map(), semDoc = [], fora = new Map();
     const get = (id) => por.get(id) || por.set(id, { nf: 0, guia: 0, cau: 0, tits: [] }).get(id);
     const rows = nfRows();
+    const nk = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" ");
     for (const r of rows) {
-      const ids = nfIds(r), t = nfTipo(r[2]), v = r[7] || 0;
+      let ids = nfIds(r), viaEx = false; const t = nfTipo(r[2]), v = r[7] || 0;
+      if (!ids.length) {
+        // está nas liberações de um contrato (mesmo documento e valor, ou mesmo documento e fornecedor)?
+        const c = (libIdx.get(dn(r[2])) || []).filter((x) => Math.abs(x.v - v) < 0.02 || nk(x.forn) === nk(r[1]));
+        const cts = [...new Set(c.map((x) => x.ct))];
+        if (cts.length === 1) { ids = cts; viaEx = true; }
+      }
       if (!ids.length) { semDoc.push(r); continue; }
       const ok = ids.filter((id) => byId.has(id));
       for (const id of ids) if (!byId.has(id)) (fora.get(id) || fora.set(id, []).get(id)).push(r);
@@ -2299,15 +2363,26 @@ ${eap.txt}`;
       ok.forEach((id, i) => {
         const x = get(id), parte = Math.round(v * pesos[i] / tp * 100) / 100;
         if (t === "GUIA") x.guia += parte; else if (t === "CAU") x.cau += parte; else x.nf += parte;
-        x.tits.push({ r, parte, tipo: t, junto: ok.length > 1 ? ok.filter((o) => o !== id) : null });
+        x.tits.push({ r, parte, tipo: t, junto: ok.length > 1 ? ok.filter((o) => o !== id) : null, viaEx });
+        if (viaEx) x.viaEx = (x.viaEx || 0) + parte;
       });
     }
     const r2 = (v) => Math.round(v * 100) / 100;
     const linhas = docs.map((d) => {
       const x = por.get(d.id) || { nf: 0, guia: 0, cau: 0, tits: [] };
       const ent = d.sec || 0, nf = r2(x.nf), dif = r2(nf - ent), tol = Math.max(1, ent * 0.005);
-      const st = !ent && !nf ? "nada" : !nf ? "semnota" : Math.abs(dif) <= tol ? "ok" : dif < 0 ? "falta" : "acima";
-      return { d, nf, guia: r2(x.guia), cau: r2(x.cau), tits: x.tits, ent, dif, st, cot: S.cot.get(linkedDocs.get(d.id))?.num ?? null };
+      let st = !ent && !nf ? "nada" : !nf ? "semnota" : Math.abs(dif) <= tol ? "ok" : dif < 0 ? "falta" : "acima";
+      // nota acima do entregue só pelo frete / outras despesas do pedido
+      const it = itensOf(d), extra = it ? r2((it[3] || 0) + (it[4] || 0)) : 0;
+      if (st === "acima" && extra > 0 && Math.abs(dif - extra) <= tol) st = "okfrete";
+      // contrato com extrato: as notas batem com o liberado (com caução/guias); o resto do medido ainda não foi liberado
+      const exc = ex.get(d.id); let aLiberar = 0;
+      if (exc && st !== "ok") {
+        const lib = exc[10], tl = Math.max(1, lib * 0.005);
+        const bate = [nf, nf + x.cau, nf + x.cau + x.guia, nf + x.guia].some((v) => Math.abs(v - lib) <= tl);
+        if (bate) { aLiberar = r2(ent - lib); st = aLiberar > tol ? "liberar" : "ok"; }
+      }
+      return { d, nf, guia: r2(x.guia), cau: r2(x.cau), tits: x.tits, viaEx: r2(x.viaEx || 0), extra, aLiberar, ex: ex.get(d.id) || null, ent, dif, st, cot: S.cot.get(linkedDocs.get(d.id))?.num ?? null };
     });
     // notas lançadas pelo financeiro sem o nº do pedido/contrato: se as do mesmo fornecedor fecham a falta, contam
     const nomeKey = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" ");
@@ -2327,7 +2402,7 @@ ${eap.txt}`;
       if (!g.cobre) g.cobre = finPor.get(nomeKey(k))?.usado || null;
     }
     const out = { rows, linhas, credores: [...credores.values()].sort((a, b) => b.total - a.total), fora: [...fora.entries()].map(([id, tits]) => ({ id, tits, total: r2(tits.reduce((t, r) => t + (r[7] || 0), 0)) })) };
-    nfCache = { v: S.nfVer, d: S.docVer, e: S.elos, c: S.cot, out };
+    nfCache = { v: S.nfVer, d: S.docVer, e: S.elos, c: S.cot, x: S.exVer, i: S.itParts, out };
     return out;
   }
 
@@ -2353,8 +2428,8 @@ ${eap.txt}`;
     const soma = (l, f) => A ? l.reduce((t, x) => t + (f(x) || 0), 0) : 0;
     const L = {
       div: A.linhas.filter((x) => x.st === "falta" || x.st === "acima"),
-      semnota: A.linhas.filter((x) => x.st === "semnota"),
-      ok: A.linhas.filter((x) => x.st === "ok" || x.st === "okfin"),
+      semnota: A.linhas.filter((x) => x.st === "semnota" || x.st === "liberar"),
+      ok: A.linhas.filter((x) => x.st === "ok" || x.st === "okfin" || x.st === "okfrete"),
       canc: A.linhas.filter((x) => fechado(x.d) && (x.ent > 0 || x.nf > 0 || saldoCanc(x.d) > 0)),
     };
     const cancRuim = L.canc.filter((x) => x.st === "acima" || x.st === "semnota" || x.st === "falta").length;
@@ -2362,7 +2437,7 @@ ${eap.txt}`;
     $("mod-s-nf").textContent = `${L.ok.length} batem · ${L.div.length} divergentes · ${L.semnota.length} sem nota`;
     const tiles = [
       ["div", "Entregue × nota divergente", L.div.length, `${L.div.filter((x) => x.st === "falta").length} com nota a menos · ${L.div.filter((x) => x.st === "acima").length} com nota a mais`, "var(--bad)"],
-      ["semnota", "Entregue/medido sem nota", L.semnota.length, `${fmt(soma(L.semnota, (x) => x.ent))} sem nota lançada`, "var(--warn)"],
+      ["semnota", "Entregue/medido ainda sem nota", L.semnota.length, `${fmt(soma(L.semnota, (x) => x.st === "liberar" ? x.aLiberar : x.ent))} sem nota · medido a liberar nos contratos`, "var(--warn)"],
       ["ok", "Nota bate com o entregue", L.ok.length, `${fmt(soma(L.ok, (x) => x.nf))} em notas` + (okFin ? ` · ${okFin} somando notas do financeiro` : ""), "var(--ok)"],
       ["canc", "Cancelados / encerrados", L.canc.length, `${fmt(soma(L.canc, (x) => saldoCanc(x.d)))} de saldo cancelado · ${cancRuim} a conferir`, "var(--wait)"],
       ["fin", "Lançado direto no financeiro", A.credores.length + " credores", `${fmt(soma(A.credores, (g) => g.total))} sem pedido/contrato`, "var(--none)"],
@@ -2375,6 +2450,11 @@ ${eap.txt}`;
     const docTd = (x) => `<td>${docLine(x.d)}${x.cot != null ? `<div class="hint">cotação <b class="num">${esc(x.cot)}</b></div>` : `<div class="hint">sem cotação ligada</div>`}` +
       (x.guia || x.cau ? `<div class="hint">${x.guia ? `guias ${fmt(x.guia)}` : ""}${x.guia && x.cau ? " · " : ""}${x.cau ? `caução ${fmt(x.cau)}` : ""}</div>` : "") +
       titsBox(x.tits, `${x.tits.length} título(s)`) +
+      (x.viaEx ? `<div class="hint">${fmt(x.viaEx)} em notas lançadas sem o nº do contrato, achadas pelo extrato</div>` : "") +
+      (x.st === "acima" ? (() => { const tp = {}; for (const t of x.tits) if (t.tipo !== "GUIA" && t.tipo !== "CAU") tp[t.tipo] = (tp[t.tipo] || 0) + t.parte; const ks = Object.keys(tp); return ks.length > 1 ? `<div class="hint">por tipo: ${ks.map((k) => `${esc(k)} ${fmt(tp[k])}`).join(" · ")}</div>` : ""; })() : "") +
+      (x.st === "okfrete" ? `<div class="hint">nota acima do entregue só pelo frete/outras despesas do pedido (${fmt(x.extra)})</div>` : "") +
+      (x.ex ? `<div class="hint">Extrato: ${x.ex[6].length} medições · medido ${fmt(x.ex[8])} · liberado ${fmt(x.ex[10])}${x.ex[9] ? ` · caução ${fmt(x.ex[9])}` : ""}${x.ex[5] ? ` · aditivos: ${esc(x.ex[5])}` : ""}</div>` +
+        `<details><summary class="hint">ver medições</summary>${x.ex[6].map((m) => `<div class="hint">Medição ${m[0]} · ${esc(m[1])} · <span class="num">${fmt(m[4])}</span>${m[3] ? ` (reajuste ${fmt(m[3])})` : ""}${m[5] ? ` · caução ${fmt(m[5])}` : ""}</div>`).join("")}</details>` : "") +
       (x.fin ? `<div class="hint${x.st === "okfin" ? "" : " neg"}">${x.st === "okfin" ? `Fecha com ${fmt(x.fin.total)} lançados pelo financeiro sem o nº do ${x.d.tipo === "CT" ? "contrato" : "pedido"}` : `O mesmo fornecedor tem ${fmt(x.fin.total)} lançados pelo financeiro sem nº de pedido/contrato`}</div>` +
         titsBox(x.fin.tits.map((r) => ({ r, parte: r[7], tipo: nfTipo(r[2]) })), "ver notas do financeiro") : "") + `</td>`;
     const lbl = (x) => x.d.tipo === "CT" ? "medido" : "entregue";
@@ -2382,15 +2462,15 @@ ${eap.txt}`;
     if (S.nfF === "div" || S.nfF === "semnota" || S.nfF === "ok") {
       const rows = L[S.nfF].filter(hitL).sort((a, b) => Math.abs(b.dif) - Math.abs(a.dif));
       const nota = S.nfF === "div" ? `<p class="hint" style="margin:0 0 8px">Nota a menos: falta lançar nota do que já foi ${"entregue/medido"}. Nota a mais: há nota acima do que o Sienge mostra como entregue/medido (nota de outro pedido, frete, reajuste ou entrega não baixada).</p>`
-        : S.nfF === "semnota" ? `<p class="hint" style="margin:0 0 8px">O Sienge mostra entrega/medição, mas nenhum título cita este pedido/contrato. A nota pode ter sido lançada sem o nº do pedido (veja "Lançado direto no financeiro").</p>` : "";
+        : S.nfF === "semnota" ? `<p class="hint" style="margin:0 0 8px">Entregue ou medido sem nota: pedido sem nenhum título, ou contrato com medição ainda não liberada (as notas batem com o liberado do extrato; a diferença é o que falta liberar).</p>` : "";
       h = nota + tbl(["Pedido / contrato", "Entregue / medido", "Notas", "Nota − entregue"], rows.map((x) =>
-        `<tr>${docTd(x)}<td class="r num">${fmt(x.ent)}<div class="hint">${lbl(x)}</div></td><td class="r num">${fmt(x.nf)}${x.st === "okfin" ? `<div class="hint">+ ${fmt(x.fin.total)} financeiro</div>` : ""}</td><td class="r num${Math.abs(x.dif) > 0.009 && x.st !== "ok" && x.st !== "okfin" ? " neg" : ""}">${x.st === "ok" || x.st === "okfin" ? "—" : fmt(x.dif)}</td></tr>`), "Nada aqui.");
+        `<tr>${docTd(x)}<td class="r num">${fmt(x.ent)}<div class="hint">${lbl(x)}</div></td><td class="r num">${fmt(x.nf)}${x.st === "okfin" ? `<div class="hint">+ ${fmt(x.fin.total)} financeiro</div>` : ""}</td><td class="r num${Math.abs(x.dif) > 0.009 && !/^ok/.test(x.st) ? " neg" : ""}">${/^ok/.test(x.st) ? "—" : x.st === "liberar" ? `${fmt(-x.aLiberar)}<div class="hint">medido a liberar</div>` : fmt(x.dif)}</td></tr>`), "Nada aqui.");
     } else if (S.nfF === "canc") {
       const rows = L.canc.filter(hitL).sort((a, b) => (a.st === "ok") - (b.st === "ok") || b.ent - a.ent);
       h = `<p class="hint" style="margin:0 0 8px">Pedido cancelado ou contrato encerrado: o saldo só deve ser cancelado de verdade quando não há nota além do que foi entregue/medido. "Consumido" = notas lançadas.</p>` +
         tbl(["Pedido / contrato", "Entregue / medido", "Notas (consumido)", "Saldo cancelado", "Situação"], rows.map((x) => {
-          const sit = x.st === "ok" || x.st === "okfin" ? `<span class="pill s-OK">nota = entregue${x.st === "okfin" ? " (com financeiro)" : ""}</span>` : x.st === "acima" ? `<span class="pill s-DIVERGENCIA">nota acima do entregue</span>`
-            : x.st === "semnota" ? `<span class="pill s-AGUARDANDO">entregue sem nota</span>` : x.st === "falta" ? `<span class="pill s-AGUARDANDO">nota abaixo do entregue</span>` : `<span class="pill s-OK">nada entregue, nada faturado</span>`;
+          const sit = /^ok/.test(x.st) ? `<span class="pill s-OK">nota = entregue${x.st === "okfin" ? " (com financeiro)" : x.st === "okfrete" ? " + frete" : ""}</span>` : x.st === "acima" ? `<span class="pill s-DIVERGENCIA">nota acima do entregue</span>`
+            : x.st === "semnota" ? `<span class="pill s-AGUARDANDO">entregue sem nota</span>` : x.st === "liberar" ? `<span class="pill s-AGUARDANDO">medido a liberar ${fmt(x.aLiberar)}</span>` : x.st === "falta" ? `<span class="pill s-AGUARDANDO">nota abaixo do entregue</span>` : `<span class="pill s-OK">nada entregue, nada faturado</span>`;
           return `<tr>${docTd(x)}<td class="r num">${fmt(x.ent)}</td><td class="r num">${fmt(x.nf)}</td><td class="r num">${fmt(saldoCanc(x.d))}</td><td>${sit}</td></tr>`;
         }), "Nenhum pedido cancelado ou contrato encerrado.");
     } else if (S.nfF === "fin") {
@@ -2464,6 +2544,8 @@ ${eap.txt}`;
     });
     db.doc("config/itens").onSnapshot((d) => { S.itMeta = d.exists ? d.data() : null; S.itMap = null; renderPed(); renderNf(); });
     db.collection("itens").limit(100).onSnapshot((snap) => { S.itParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.itMap = null; renderPed(); renderNf(); });
+    db.doc("config/extrato").onSnapshot((d) => { S.exMeta = d.exists ? d.data() : null; S.exVer++; renderNf(); });
+    db.collection("extrato").limit(100).onSnapshot((snap) => { S.exParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.exVer++; renderNf(); });
     db.doc("config/nf").onSnapshot((d) => { S.nfMeta = d.exists ? d.data() : null; S.nfVer++; renderNf(); });
     db.collection("nf").limit(100).onSnapshot((snap) => { S.nfParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.nfVer++; renderNf(); });
     db.doc("config/elos").onSnapshot((d) => { S.elos = d.exists ? d.data() : { links: [], rej: [] }; renderAll(); });
