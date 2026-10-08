@@ -2212,8 +2212,15 @@ ${eap.txt}`;
     const valor = estouro(x); if (!(valor > 0)) return;
     let num = "AD " + x.c.num; for (let i = 2; [...S.cot.values()].some((c) => key(c.num) === key(num)); i++) num = `AD ${x.c.num} (${i})`;
     const docs = x.docs.filter((d) => d.uso * d.f > (d.parte ?? d.d.prim * d.f) + 0.009);
-    if (!confirm(`Criar a cotação "${num}" de ${fmt(valor)} para regularizar o estouro de ${docs.map((d) => d.d.id).join(", ")}?\n\nNo Sienge, faça o aditivo ou pedido complementar do mesmo valor.`)) return;
-    b.disabled = true;
+    // confirmação na própria página (janelas do navegador podem estar bloqueadas)
+    const msg = b.parentElement.querySelector(".hint");
+    if (!b.dataset.armed) {
+      b.dataset.armed = "1"; b.classList.add("primary"); b.textContent = `Confirmar: criar "${num}" de ${fmt(valor)}`;
+      if (msg) msg.textContent = `Liga ${fmt(valor)} ao ${docs.map((d) => d.d.id).join(", ")}. No Sienge, faça o aditivo ou pedido complementar do mesmo valor.`;
+      setTimeout(() => { if (b.isConnected && b.dataset.armed) { delete b.dataset.armed; b.classList.remove("primary"); b.textContent = `Registrar estouro como aditivo (${fmt(valor)})`; } }, 8000);
+      return;
+    }
+    b.disabled = true; b.textContent = "Criando…";
     try {
       const ref = S.db.collection("cotacoes").doc();
       await ref.set({ num, desc: `REGULARIZAÇÃO ESTOURO ${x.c.desc}`.slice(0, 120), valor, formula: null, ordem: (x.c.ordem || 0) + 0.01, atualizadoEm: new Date().toISOString(), qc: null,
@@ -2226,7 +2233,7 @@ ${eap.txt}`;
         e.links.push({ doc: d.d.id, cot: ref.id, em: agora, parte: over });
       }
       await S.db.doc("config/elos").set(e);
-    } catch (err) { alert(errText(err)); b.disabled = false; }
+    } catch (err) { b.disabled = false; delete b.dataset.armed; b.textContent = "Tentar de novo"; if (msg) { msg.classList.add("neg"); msg.textContent = errText(err); } }
   });
   $("res-summary").addEventListener("click", (ev) => { const b = ev.target.closest("[data-rf]"); if (!b) return; S.resF = b.dataset.rf; try { localStorage.setItem("cc-resf", S.resF); } catch {} renderRes(); });
   $("res-q").addEventListener("input", () => renderRes());
@@ -2795,14 +2802,14 @@ ${eap.txt}`;
       const fin = b.dataset.fin ? b.dataset.fin.split("||") : (S.explicados?.[id]?.fin || []);
       novo[id] = { tits: x.tits.filter((t) => !t.finOk).map((t) => titKey(t.r)), ...(fin.length ? { fin } : {}), obs: ($("exp-obs-" + id.replace(/\W/g, "_"))?.value || "").trim(), em: new Date().toISOString() };
     }
-    try { await S.db.doc("config/explicados").set(novo); } catch (e) { alert(errText(e)); }
+    try { await S.db.doc("config/explicados").set(novo); } catch (e) { b.textContent = errText(e); }
   });
   // situação do contrato marcada por você (o extrato não diz se foi concluído ou rescindido)
   $("nf-list").addEventListener("change", async (ev) => {
     const sel = ev.target.closest("[data-sit]"); if (!sel || !S.db) return;
     const id = sel.dataset.sit, v = sel.value;
     try { await S.db.doc("config/situacao").set({ ...(S.situacao || {}), [id]: v || null }); }
-    catch (e) { alert(errText(e)); }
+    catch (e) { sel.title = errText(e); sel.style.outline = "2px solid var(--bad)"; }
   });
 
 
