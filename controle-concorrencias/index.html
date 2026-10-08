@@ -2205,6 +2205,19 @@ ${eap.txt}`;
   }
   // estouro = consumido acima do comprado (pedido/contrato). Registrar vira uma cotação "AD" ligada ao mesmo documento,
   // com a parte do estouro: a cotação original fecha no valor comprado e a AD entra em "falta lançar" na planilha.
+  // linhas da EAP herdadas da cotação original (as mesmas linhas da planilha), na proporção em que ela foi lançada
+  function herdaEap(x, valor) {
+    const em = eapRows(), porDesc = new Map(em.map((e) => [String(e[2] || "").trim().toUpperCase(), e[0]]));
+    const ls = (x.linhas || []).filter((l) => (Number(l[1]) || 0) > 0), tot = ls.reduce((t, l) => t + Number(l[1]), 0);
+    if (!ls.length || !tot) return null;
+    let resto = Math.round(valor * 100);
+    const out = ls.map((l, i) => {
+      const v = i === ls.length - 1 ? resto : Math.round(valor * 100 * Number(l[1]) / tot); resto -= v;
+      return { eap: porDesc.get(String(l[2] || "").trim().toUpperCase()) || "", item: String(l[2] || ""), descricao: String(l[3] || x.c.desc), valor: v / 100, itens_qc: [],
+        motivo: `Mesma linha da cotação ${x.c.num} (planilha ID ${l[4] ?? "?"}), proporcional ao lançado: ajuste se o estouro for de um item específico.` };
+    });
+    return { lancamentos: out, confirmadoEm: null };
+  }
   const estouro = (x) => x.docs.length ? Math.round(x.docs.reduce((t, d) => t + Math.max(0, d.uso * d.f - (d.parte ?? d.d.prim * d.f)), 0) * 100) / 100 : 0;
   $("res-list").addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-ad]"); if (!b || !S.db) return;
@@ -2223,7 +2236,7 @@ ${eap.txt}`;
     b.disabled = true; b.textContent = "Criando…";
     try {
       const ref = S.db.collection("cotacoes").doc();
-      await ref.set({ num, desc: `REGULARIZAÇÃO ESTOURO ${x.c.desc}`.slice(0, 120), valor, formula: null, ordem: (x.c.ordem || 0) + 0.01, atualizadoEm: new Date().toISOString(), qc: null,
+      await ref.set({ num, desc: `REGULARIZAÇÃO ESTOURO ${x.c.desc}`.slice(0, 120), valor, formula: null, ordem: (x.c.ordem || 0) + 0.01, atualizadoEm: new Date().toISOString(), qc: herdaEap(x, valor),
         obs: `Notas acima do ${docs.map((d) => d.d.id).join(", ")}: consumido ${fmt(x.consumido)} × comprado ${fmt(x.comprado)}. Registrado pelo site em ${new Date().toLocaleDateString("pt-BR")}.` });
       const e = curElos(), agora = new Date().toISOString();
       for (const d of docs) {
