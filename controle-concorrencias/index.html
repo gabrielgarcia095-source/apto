@@ -161,6 +161,15 @@ dl.kv dd { margin: 0; }
 .mod-t { display: grid; gap: 2px; min-width: 0; }
 .mod-s { font-size: .78rem; color: var(--muted); }
 .modbody { display: grid; gap: 18px; }
+.hoje { display: grid; gap: 22px; }
+.hoje-g h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.hoje-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.hoje-card { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--line)); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
+.hoje-card .hn { font-size: 28px; font-weight: 800; line-height: 1; }
+.hoje-card .ht { font-weight: 700; }
+.hoje-card ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+.hoje-card li { margin: 2px 0; }
+.hoje-ok { color: var(--ok); font-weight: 600; }
 .modbar { justify-content: space-between; }
 .tbtn { font: inherit; text-align: left; border: 0; cursor: pointer; color: var(--ink); }
 .tbtn[aria-pressed="true"] { box-shadow: inset 0 -3px 0 var(--accent); background: var(--accent-soft); }
@@ -184,12 +193,18 @@ dl.kv dd { margin: 0; }
 
   <!-- Módulos: uma etapa do processo de compra em cada um -->
   <nav class="mods" role="tablist" aria-label="Etapas">
-    <button class="mod" type="button" role="tab" data-mod="orc" aria-selected="true"><span class="mod-n">1</span><span class="mod-t"><b>Cotação × Orçamento</b><span class="mod-s" id="mod-s-orc">Lançamento na planilha de orçamento</span></span></button>
+    <button class="mod" type="button" role="tab" data-mod="hoje" aria-selected="true"><span class="mod-n">✓</span><span class="mod-t"><b>O que fazer</b><span class="mod-s" id="mod-s-hoje">Pendências de todas as etapas</span></span></button>
+    <button class="mod" type="button" role="tab" data-mod="orc" aria-selected="false"><span class="mod-n">1</span><span class="mod-t"><b>Cotação × Orçamento</b><span class="mod-s" id="mod-s-orc">Lançamento na planilha de orçamento</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="ped" aria-selected="false"><span class="mod-n">2</span><span class="mod-t"><b>Cotação × Pedido / contrato</b><span class="mod-s" id="mod-s-ped">Pedidos e contratos do Sienge</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="nf" aria-selected="false"><span class="mod-n">3</span><span class="mod-t"><b>Pedido × Nota fiscal</b><span class="mod-s" id="mod-s-nf">Notas do Sienge</span></span></button>
   </nav>
 
-  <div id="mod-orc" class="modbody">
+  <div id="mod-hoje" class="modbody">
+    <div class="row modbar"><h2>O que fazer</h2><span class="hint">Só o que precisa de você, do maior valor para o menor. O que estiver em dia sai daqui sozinho.</span></div>
+    <div id="hoje-list" class="hoje"></div>
+  </div>
+
+  <div id="mod-orc" class="modbody" hidden>
   <div class="row modbar">
     <h2>Cotação × Orçamento</h2>
     <div class="row">
@@ -642,7 +657,7 @@ dl.kv dd { margin: 0; }
   }
 
   function renderAll() {
-    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); renderPed(); renderNf(); updateCheck();
+    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); renderPed(); renderNf(); renderHoje(); updateCheck();
   }
 
   // ---------- formulário ----------
@@ -800,11 +815,11 @@ dl.kv dd { margin: 0; }
   // ---------- módulos ----------
   function selectMod(m) {
     for (const b of document.querySelectorAll(".mod")) b.setAttribute("aria-selected", String(b.dataset.mod === m));
-    for (const n of ["orc", "ped", "nf"]) $("mod-" + n).hidden = n !== m;
-    try { localStorage.setItem("cc-mod", m); } catch {}
+    for (const n of ["hoje", "orc", "ped", "nf"]) $("mod-" + n).hidden = n !== m;
+    if (m === "hoje") renderHoje();
   }
   for (const b of document.querySelectorAll(".mod")) b.addEventListener("click", () => selectMod(b.dataset.mod));
-  try { const m = localStorage.getItem("cc-mod"); if (m === "ped" || m === "nf") selectMod(m); } catch {}
+  // abre sempre em "O que fazer"
 
   // ---------- abas ----------
   function selectTab(t) {
@@ -2101,6 +2116,60 @@ ${eap.txt}`;
     const hs = nfAnalise().semDoc.filter((r) => nfTipo(r[2]) !== "GUIA" && Math.abs((r[7] || 0) - c.valor) < 0.005);
     return hs.length === 1 ? `<div class="hint" style="color:var(--ok)">Nota de mesmo valor lançada no financeiro: ${esc(hs[0][1].replace(/^\d+\s*-\s*/, ""))} · ${esc(hs[0][2])} · ${esc(hs[0][5])}. Se for esta, use "Lançado no financeiro".</div>` : "";
   }
+  // ---------- O que fazer: pendências das 3 etapas, por onde agir ----------
+  function renderHoje() {
+    const box = $("hoje-list"); if (!box || !S.loadedCot) return;
+    const top = (arr, f, n = 3) => arr.slice(0, n).map(f).map((t) => `<li>${t}</li>`).join("") + (arr.length > n ? `<li>… e mais ${arr.length - n}</li>` : "");
+    const card = (c) => `<div class="hoje-card" style="--c:${c.cor}"><div class="row" style="justify-content:space-between;align-items:baseline"><span class="ht">${c.t}</span><span class="hn">${c.n}</span></div>` +
+      `<div class="hint">${c.o}</div>${c.l ? `<ul>${c.l}</ul>` : ""}<div><button class="btn${c.p ? " primary" : ""}" type="button" data-ir="${c.ir}">${c.b}</button></div></div>`;
+    const grupos = [];
+    // 1) planilha de orçamento
+    const falta = D.rows.filter((r) => r.st === "FALTA LANÇAR").sort((a, b) => (b.valor || 0) - (a.valor || 0));
+    const div = D.rows.filter((r) => r.st === "DIVERGÊNCIA").sort((a, b) => Math.abs(b.dif || 0) - Math.abs(a.dif || 0));
+    const g1 = [];
+    if (falta.length) g1.push({ t: "Lançar na planilha de orçamento", n: falta.length, cor: "var(--warn)", p: 1, ir: "orc:FALTA LANÇAR", b: "Ver e copiar o que falta",
+      o: `Cotações aprovadas que ainda não estão na aba LANÇAMENTOS (${fmt(falta.reduce((t, r) => t + (r.valor || 0), 0))}).`, l: top(falta, (r) => `<b>${esc(r.num)}</b> ${esc(r.desc)} · ${fmt(r.valor)}`) });
+    if (div.length) g1.push({ t: "Corrigir valor na planilha", n: div.length, cor: "var(--bad)", ir: "orc:DIVERGÊNCIA", b: "Ver divergências",
+      o: "O valor lançado no orçamento é diferente do aprovado na cotação.", l: top(div, (r) => `<b>${esc(r.num)}</b> ${esc(r.desc)} · aprovado ${fmt(r.valor)}, lançado ${fmt(r.lanc)}`) });
+    grupos.push(["Na planilha de orçamento", g1]);
+    // 2) conferir no site
+    const g2 = [];
+    if (temDocs()) {
+      const L = pedLists();
+      if (L.sug.length) g2.push({ t: "Confirmar pedido sugerido", n: L.sug.length, cor: "var(--warn)", p: 1, ir: "ped:sug", b: "Confirmar",
+        o: "O site achou o pedido/contrato provável de cada cotação; falta você confirmar.", l: top(L.sug, (r) => `<b>${esc(r.c.num)}</b> ${esc(r.c.desc)} → ${esc(r.s.map((x) => x.doc.id).join(", "))}`) });
+      const sem = [...L.sem].sort((a, b) => (b.c.valor || 0) - (a.c.valor || 0));
+      if (sem.length) g2.push({ t: "Cotação sem pedido", n: sem.length, cor: "var(--bad)", ir: "ped:sem", b: "Vincular ou justificar",
+        o: "Cotação aprovada sem pedido/contrato no Sienge: vincule, ou marque “Lançado no financeiro” / “Não gerou pedido”.", l: top(sem, (r) => `<b>${esc(r.c.num)}</b> ${esc(r.c.desc)} · ${fmt(r.c.valor)}`) });
+      const canc = L.canc.filter((r) => r.semEntrega && !r.j).sort((a, b) => (b.c.valor || 0) - (a.c.valor || 0));
+      if (canc.length) g2.push({ t: "Pedido cancelado sem entrega", n: canc.length, cor: "var(--wait)", ir: "ped:canc", b: "Explicar",
+        o: "A cotação foi aprovada, mas o pedido foi cancelado sem entregar nada: diga se foi refeito em outro pedido ou se não houve compra.", l: top(canc, (r) => `<b>${esc(r.c.num)}</b> ${esc(r.c.desc)} · ${fmt(r.c.valor)}`) });
+      if (L.errados.length) g2.push({ t: "Excluir no Sienge", n: L.errados.length, cor: "var(--bad)", ir: "ped:livres", b: "Ver",
+        o: "Pedido/contrato que você marcou como errado e ainda aparece no Sienge.", l: top(L.errados, (d) => `<b>${esc(d.id)}</b> ${esc(d.forn)} · ${fmt(d.prim)}`) });
+    }
+    if (S.nfMeta && temDocs()) {
+      const A = nfAnalise();
+      const dv = A.linhas.filter((x) => x.st === "acima" || x.st === "falta" || x.novos?.length).sort((a, b) => Math.abs(b.dif) - Math.abs(a.dif));
+      if (dv.length) g2.push({ t: "Nota diferente do entregue", n: dv.length, cor: "var(--bad)", ir: "nf:div", b: "Conferir notas",
+        o: "Pedido/contrato com nota a mais ou a menos do que foi entregue/medido. Explique ou corrija no Sienge.", l: top(dv, (x) => `<b>${esc(x.d.id)}</b> ${esc(x.d.forn)} · ${x.novos?.length ? "nota nova de outro fornecedor" : (x.dif > 0 ? "+" : "") + fmt(x.dif)}`) });
+      const lib = A.linhas.filter((x) => x.st === "liberar").sort((a, b) => b.aLiberar - a.aLiberar);
+      if (lib.length) grupos.push(["Acompanhar", [{ t: "Medição ainda não liberada", n: lib.length, cor: "var(--wait)", ir: "nf:semnota", b: "Ver contratos",
+        o: "Contrato medido, mas o pagamento ainda não foi liberado. Normalmente se resolve sozinho no mês seguinte.", l: top(lib, (x) => `<b>${esc(x.d.id)}</b> ${esc(x.d.forn)} · ${fmt(x.aLiberar)}`) }]]);
+    }
+    grupos.splice(1, 0, ["Conferir no site", g2]);
+    const total = grupos.reduce((t, [, cs]) => t + cs.filter((c) => c.ir !== "nf:semnota").reduce((u, c) => u + c.n, 0), 0);
+    $("mod-s-hoje").textContent = total ? `${total} pendências` : "Tudo em dia";
+    box.innerHTML = grupos.map(([g, cs]) => `<section class="hoje-g"><h3>${g}</h3>${cs.length ? `<div class="hoje-cards">${cs.map(card).join("")}</div>` : `<div class="hoje-ok">Tudo em dia ✓</div>`}</section>`).join("");
+  }
+  $("hoje-list").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-ir]"); if (!b) return;
+    const [m, f] = b.dataset.ir.split(":");
+    selectMod(m);
+    if (m === "orc") { S.filter = f; S.showAll = false; selectTab("cot"); renderChips(); renderTable(); }
+    if (m === "ped") { S.pedF = f; renderPed(); }
+    if (m === "nf") { S.nfF = f; renderNf(); }
+    window.scrollTo(0, 0);
+  });
   function relInfo() {
     const q = (m) => m ? `${new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : `<span class="hint">não importado</span>`;
     const fora = (t) => t === "PC" ? novo(S.itMeta, S.docMeta.PC) : novo(S.exMeta, S.docMeta.CT);
