@@ -2141,7 +2141,9 @@ ${eap.txt}`;
         const d = e.doc, f = e.parte != null && d.prim > 0 ? e.parte / d.prim : 1, n = nfBy.get(d.id);
         const nf = n ? n.nf : 0, uso = Math.max(d.sec || 0, nf);
         comprado += e.parte != null ? e.parte : d.prim; consumido += uso * f; notas += nf * f;
-        return { d, f, nf, uso, enc: encerrado(d) };
+        const porCred = new Map(); // notas deste pedido/contrato por fornecedor da nota
+        for (const t of n?.tits || []) if (t.tipo !== "GUIA" && t.tipo !== "CAU") { const k = t.r[1].replace(/^\d+\s*-\s*/, ""); const v = porCred.get(k) || { v: 0, n: 0 }; v.v += t.parte; v.n++; porCred.set(k, v); }
+        return { d, f, nf, uso, enc: encerrado(d), porCred: [...porCred].sort((a, b) => b[1].v - a[1].v), it: itensOf(d) };
       });
       const j = justOf(c.id);
       const sit = !docs.length ? "sem" : docs.every((x) => x.enc) ? "enc" : "and";
@@ -2180,7 +2182,9 @@ ${eap.txt}`;
     S.resView = rows;
     const forn = (x) => [...new Set(x.docs.map((d) => d.d.forn))].join(", ");
     const det = (x) => `<details><summary class="hint">detalhes</summary>` +
-      x.docs.map((d) => `<div class="hint"><b>${esc(d.d.id)}</b> · ${esc(d.d.sit)} · ${d.d.tipo === "CT" ? "contratado" : "pedido"} ${fmt(d.d.prim)}${d.f < 1 ? ` (desta cotação ${fmt(d.d.prim * d.f)})` : ""} · ${d.d.tipo === "CT" ? "medido" : "entregue"} ${fmt(d.d.sec)} · notas ${fmt(d.nf)}</div>`).join("") +
+      x.docs.map((d) => `<div class="hint" style="margin-top:4px"><b>${esc(d.d.id)}</b> · ${esc(d.d.sit)} · ${d.d.tipo === "CT" ? "contratado" : "pedido"} ${fmt(d.d.prim)}${d.f < 1 ? ` (desta cotação ${fmt(d.d.prim * d.f)})` : ""}${d.it && (d.it[3] || d.it[4]) ? ` (frete ${fmt(d.it[3])}, outras ${fmt(d.it[4])})` : d.it ? " (sem frete no pedido)" : ""} · ${d.d.tipo === "CT" ? "medido" : "entregue"} ${fmt(d.d.sec)} · notas ${fmt(d.nf)}</div>` +
+        (d.porCred.length ? `<div class="hint" style="padding-left:12px">Notas lançadas neste ${d.d.tipo === "CT" ? "contrato" : "pedido"}: ${d.porCred.map(([k, v]) => `${esc(k)} ${fmt(v.v)} (${v.n} nota${v.n > 1 ? "s" : ""})`).join(" · ")}</div>` : "") +
+        (d.uso > d.d.prim * 1.005 ? `<div class="hint neg" style="padding-left:12px">Consumido acima do ${d.d.tipo === "CT" ? "contrato" : "pedido"} em ${fmt(d.uso - d.d.prim)}${d.nf > (d.d.sec || 0) ? ` (notas passam o entregue em ${fmt(d.nf - (d.d.sec || 0))})` : ""}</div>` : "")).join("") +
       (x.linhas.length ? x.linhas.map((l) => `<div class="hint">Planilha: ID ${esc(l[4] ?? "")} · ${esc(l[2] || "")} · ${esc(l[3] || "")} · <span class="num">${fmt(l[1])}</span></div>`).join("") : `<div class="hint">Não está na planilha de orçamento.</div>`) + `</details>`;
     const col = { dev: "Devolver", add: "Acrescentar", and: "A consumir", sem: "Situação", ok: "Ajuste" };
     const ult = (x) => x.sit === "enc" ? `<b class="num${x.ajuste < 0 ? " neg" : ""}">${Math.abs(x.ajuste) < 0.01 ? "—" : fmt(Math.abs(x.ajuste))}</b>` : x.sit === "and" ? `<span class="num">${fmt(x.aConsumir)}</span>` : (x.j ? `<span class="hint">${esc(x.j.motivo === "financeiro" ? "lançado no financeiro" : "não gerou pedido")}${x.j.obs ? ": " + esc(x.j.obs) : ""}</span>` : `<span class="hint">sem pedido</span>`);
