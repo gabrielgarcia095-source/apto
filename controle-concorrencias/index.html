@@ -609,6 +609,14 @@ dl.kv dd { margin: 0; }
       `</tbody></table>`;
   }
 
+  // aditivo (AD) e devolução (DV) de uma cotação: "AD 93", "AD COT. 30", "DV 179", "AD 93 (2)"
+  function origemDe(num) { const m = String(num).match(/^(AD|DV)\s*(?:COT\.?\s*)?(.+?)(\s+\(\d+\))?$/i); return m ? { tipo: m[1].toUpperCase(), orig: m[2] } : null; }
+  function filhosDe(num) { const k = key(num); return D.rows.filter((r) => { const o = origemDe(r.num); return o && key(o.orig) === k; }); }
+  function filhosHint(x) {
+    const fs = filhosDe(x.num); if (!fs.length) return "";
+    const tot = Math.round((x.lanc + fs.reduce((t, f) => t + (f.lanc || 0), 0)) * 100) / 100;
+    return `<div class="hint">${fs.map((f) => `${esc(f.num)} ${fmt(f.valor)}${f.lanc ? "" : " (falta lançar)"}`).join(" · ")} · total lançado com ${fs.length > 1 ? "eles" : origemDe(fs[0].num).tipo === "AD" ? "o aditivo" : "a devolução"}: <b class="num">${fmt(tot)}</b></div>`;
+  }
   function renderTable() {
     const tb = $("tbody");
     if (!S.db && S.dbChecked) { tb.innerHTML = `<tr><td colspan="7" class="empty">Sem acesso ao banco de dados nesta visualização.</td></tr>`; return; }
@@ -622,7 +630,7 @@ dl.kv dd { margin: 0; }
     for (const x of shown) {
       const dup = (D.keyCount.get(x.k) || 0) > 1 ? ` <span class="dup" title="Nº repetido">2×</span>` : "";
       h += `<tr class="main${S.editing === x.id ? " sel" : ""}" data-id="${esc(x.id)}">` +
-        `<td class="num">${esc(x.num)}${dup}</td><td class="desc">${esc(x.desc)}</td>` +
+        `<td class="num">${origemDe(x.num) ? "↳ " : ""}${esc(x.num)}${dup}</td><td class="desc">${esc(x.desc)}${origemDe(x.num) ? `<div class="hint">${origemDe(x.num).tipo === "AD" ? "aditivo" : "devolução"} da cotação ${esc(origemDe(x.num).orig)}</div>` : filhosHint(x)}</td>` +
         `<td class="r num">${fmt(x.valor)}</td><td class="r num">${x.lanc ? fmt(x.lanc) : "—"}</td>` +
         `<td class="r num${x.dif < 0 ? " diff-neg" : ""}">${x.dif == null || x.dif === 0 ? "—" : fmt(x.dif)}</td>` +
         `<td>${x.st ? `<span class="pill s-${statusCls[x.st]}">${esc(x.st)}</span>` : ""}</td>` +
@@ -2203,6 +2211,7 @@ ${eap.txt}`;
       `<tr><td><b class="num">${esc(x.c.num)}</b> ${esc(x.c.desc)}<div class="hint">${esc(forn(x)) || "&nbsp;"}</div>` +
       (x.nada ? `<div class="qc-warn" style="margin-top:4px">Pedido cancelado sem entrega. Se a compra foi refeita em outro pedido, vincule-o à cotação (módulo 2); se não houve compra, o valor volta ao orçamento.</div>` : "") +
       (x.rep ? `<div class="hint">Nº ${esc(x.c.num)} usado em mais de uma cotação: lançado dividido pelo valor aprovado.</div>` : "") +
+      (origemDe(x.c.num) ? `<div class="hint">${origemDe(x.c.num).tipo === "AD" ? "aditivo" : "devolução"} da cotação ${esc(origemDe(x.c.num).orig)}</div>` : filhosDe(x.c.num).filter((f) => f.valor > 0).map((f) => `<div class="hint">+ ${esc(f.num)} ${fmt(f.valor)}${f.lanc ? " (lançado)" : " (falta lançar)"}</div>`).join("")) +
       (x.dvPend?.length ? `<div class="hint" style="color:var(--ok)">Devolução registrada (${x.dvPend.map((d) => esc(d.num) + " " + fmt(d.valor)).join(", ")}): falta lançar na planilha.</div>` :
         x.sit === "enc" && x.ajuste > Math.max(1, (x.c.lanc || 0) * 0.005) ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-dv="${esc(x.c.id)}">Registrar devolução ao orçamento (${fmt(x.ajuste)})</button><span class="hint">cria a cotação “DV ${esc(x.c.num)}” com valor negativo, nas mesmas linhas da EAP</span></div>` : "") +
       (estouro(x) > 0 ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-ad="${esc(x.c.id)}">Registrar estouro como aditivo (${fmt(estouro(x))})</button><span class="hint">cria a cotação “AD ${esc(x.c.num)}” para lançar na planilha</span></div>` : "") + `${det(x)}</td>` +
