@@ -2138,12 +2138,19 @@ ${eap.txt}`;
       const certos = temDocs() ? elosOf(c.id).certos.filter((e) => !e.fd) : [];
       let comprado = 0, consumido = 0, notas = 0;
       const docs = certos.map((e) => {
-        const d = e.doc, f = e.parte != null && d.prim > 0 ? e.parte / d.prim : 1, n = nfBy.get(d.id);
+        const d = e.doc, n = nfBy.get(d.id);
+        // documento dividido entre cotações: cada uma fica com a sua parte do consumido (parte / soma das partes)
+        // ligação sem valor num documento dividido vale o aprovado da própria cotação
+        const ls = (S.elos?.links || []).filter((l) => l.doc === d.id && !l.fd), dividido = ls.length > 1 && ls.some((l) => l.parte != null);
+        const parteDe = (l) => l.parte != null ? l.parte : (S.cot.get(l.cot)?.valor || 0);
+        const sp = dividido ? ls.reduce((t, l) => t + parteDe(l), 0) : 0;
+        const minha = e.parte != null ? e.parte : dividido ? (c.valor || 0) : null;
+        const f = minha != null ? (sp > 0 ? minha / sp : d.prim > 0 ? minha / d.prim : 1) : 1;
         const nf = n ? n.nf : 0, uso = Math.max(d.sec || 0, nf);
-        comprado += e.parte != null ? e.parte : d.prim; consumido += uso * f; notas += nf * f;
+        comprado += minha != null ? minha : d.prim; consumido += uso * f; notas += nf * f;
         const porCred = new Map(); // notas deste pedido/contrato por fornecedor da nota
         for (const t of n?.tits || []) if (t.tipo !== "GUIA" && t.tipo !== "CAU") { const k = t.r[1].replace(/^\d+\s*-\s*/, ""); const v = porCred.get(k) || { v: 0, n: 0 }; v.v += t.parte; v.n++; porCred.set(k, v); }
-        return { d, f, nf, uso, enc: encerrado(d), porCred: [...porCred].sort((a, b) => b[1].v - a[1].v), it: itensOf(d) };
+        return { d, f, parte: minha, nf, uso, enc: encerrado(d), porCred: [...porCred].sort((a, b) => b[1].v - a[1].v), it: itensOf(d) };
       });
       const j = justOf(c.id);
       const sit = !docs.length ? "sem" : docs.every((x) => x.enc) ? "enc" : "and";
@@ -2191,10 +2198,36 @@ ${eap.txt}`;
     box.innerHTML = tbl(["Cotação", "Orçamento (lançado)", "Comprado", "Consumido", col[S.resF] || ""], rows.map((x) =>
       `<tr><td><b class="num">${esc(x.c.num)}</b> ${esc(x.c.desc)}<div class="hint">${esc(forn(x)) || "&nbsp;"}</div>` +
       (x.nada ? `<div class="qc-warn" style="margin-top:4px">Pedido cancelado sem entrega. Se a compra foi refeita em outro pedido, vincule-o à cotação (módulo 2); se não houve compra, o valor volta ao orçamento.</div>` : "") +
-      (x.rep ? `<div class="hint">Nº ${esc(x.c.num)} usado em mais de uma cotação: lançado dividido pelo valor aprovado.</div>` : "") + `${det(x)}</td>` +
+      (x.rep ? `<div class="hint">Nº ${esc(x.c.num)} usado em mais de uma cotação: lançado dividido pelo valor aprovado.</div>` : "") +
+      (estouro(x) > 0 ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-ad="${esc(x.c.id)}">Registrar estouro como aditivo (${fmt(estouro(x))})</button><span class="hint">cria a cotação “AD ${esc(x.c.num)}” para lançar na planilha</span></div>` : "") + `${det(x)}</td>` +
       `<td class="r num">${x.c.lanc ? fmt(x.c.lanc) : `<span class="neg">não lançado</span>`}</td><td class="r num">${x.docs.length ? fmt(x.comprado) : "—"}</td><td class="r num">${x.docs.length ? fmt(x.consumido) : "—"}</td><td class="r">${ult(x)}</td></tr>`),
       S.resF === "dev" ? "Nenhuma cotação encerrada com sobra." : "Nada aqui.");
   }
+  // estouro = consumido acima do comprado (pedido/contrato). Registrar vira uma cotação "AD" ligada ao mesmo documento,
+  // com a parte do estouro: a cotação original fecha no valor comprado e a AD entra em "falta lançar" na planilha.
+  const estouro = (x) => x.docs.length ? Math.round(x.docs.reduce((t, d) => t + Math.max(0, d.uso * d.f - (d.parte ?? d.d.prim * d.f)), 0) * 100) / 100 : 0;
+  $("res-list").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-ad]"); if (!b || !S.db) return;
+    const x = resRows().find((r) => r.c.id === b.dataset.ad); if (!x) return;
+    const valor = estouro(x); if (!(valor > 0)) return;
+    let num = "AD " + x.c.num; for (let i = 2; [...S.cot.values()].some((c) => key(c.num) === key(num)); i++) num = `AD ${x.c.num} (${i})`;
+    const docs = x.docs.filter((d) => d.uso * d.f > (d.parte ?? d.d.prim * d.f) + 0.009);
+    if (!confirm(`Criar a cotação "${num}" de ${fmt(valor)} para regularizar o estouro de ${docs.map((d) => d.d.id).join(", ")}?\n\nNo Sienge, faça o aditivo ou pedido complementar do mesmo valor.`)) return;
+    b.disabled = true;
+    try {
+      const ref = S.db.collection("cotacoes").doc();
+      await ref.set({ num, desc: `REGULARIZAÇÃO ESTOURO ${x.c.desc}`.slice(0, 120), valor, formula: null, ordem: (x.c.ordem || 0) + 0.01, atualizadoEm: new Date().toISOString(), qc: null,
+        obs: `Notas acima do ${docs.map((d) => d.d.id).join(", ")}: consumido ${fmt(x.consumido)} × comprado ${fmt(x.comprado)}. Registrado pelo site em ${new Date().toLocaleDateString("pt-BR")}.` });
+      const e = curElos(), agora = new Date().toISOString();
+      for (const d of docs) {
+        const parteOrig = Math.round((d.parte ?? d.d.prim * d.f) * 100) / 100, over = Math.round((d.uso * d.f - parteOrig) * 100) / 100;
+        const l = e.links.find((l) => l.doc === d.d.id && l.cot === x.c.id);
+        if (l) { if (l.parte == null) l.parte = parteOrig; } else e.links.push({ doc: d.d.id, cot: x.c.id, em: agora, parte: parteOrig });
+        e.links.push({ doc: d.d.id, cot: ref.id, em: agora, parte: over });
+      }
+      await S.db.doc("config/elos").set(e);
+    } catch (err) { alert(errText(err)); b.disabled = false; }
+  });
   $("res-summary").addEventListener("click", (ev) => { const b = ev.target.closest("[data-rf]"); if (!b) return; S.resF = b.dataset.rf; try { localStorage.setItem("cc-resf", S.resF); } catch {} renderRes(); });
   $("res-q").addEventListener("input", () => renderRes());
   $("res-xlsx").addEventListener("click", async () => {
@@ -2601,18 +2634,27 @@ ${eap.txt}`;
       if (x.st !== "falta" && x.st !== "semnota") continue;
       const f = finPor.get(nomeKey(x.d.forn)); if (!f) continue;
       x.fin = f; const falta = -x.dif;
-      if (!f.usado && Math.abs(f.total - falta) <= Math.max(1, x.ent * 0.005)) { x.st = "okfin"; f.usado = x.d.id; }
+      // só sugere: a nota não está no pedido no Sienge; conta depois que você confirmar
+      if (!f.usado && Math.abs(f.total - falta) <= Math.max(1, x.ent * 0.005)) { x.finSug = true; f.usado = x.d.id; }
     }
     // uma única nota do financeiro, de outro credor, com exatamente o valor que falta (ex.: faturamento direto do gás)
     //   só com centavos e acima de R$ 1.000, para não pegar coincidência de valor redondo
-    const usadas = new Set();
+    // notas do financeiro que você confirmou como deste pedido/contrato
+    const usadas = new Set(), sugeridas = new Set(), expC = S.explicados || {};
+    for (const x of linhas) {
+      const fk2 = new Set(expC[x.d.id]?.fin || []); if (!fk2.size) continue;
+      const rs = semDoc.filter((r) => fk2.has(titKey(r)));
+      for (const r of rs) { usadas.add(r); x.nf = r2(x.nf + (r[7] || 0)); x.tits.push({ r, parte: r[7] || 0, tipo: nfTipo(r[2]), finOk: true }); }
+      if (rs.length) { x.dif = r2(x.nf - x.ent); if (Math.abs(x.dif) <= Math.max(1, x.ent * 0.005)) x.st = "ok"; else if (x.dif > 0) x.st = "acima"; }
+    }
     for (const x of linhas) {
       if (x.st !== "falta" && x.st !== "semnota" && x.st !== "liberar") continue;
+      if (x.finSug) continue;
       const gap = r2(x.st === "liberar" ? x.aLiberar : -x.dif);
       const mesmo = (r) => nomeKey(r[1]) === nomeKey(x.d.forn);
-      const hs = semDoc.filter((r) => nfTipo(r[2]) !== "GUIA" && !usadas.has(r) && Math.abs((r[7] || 0) - gap) < 0.005 && parseDate(r[5]) >= parseDate(x.d.data) - 30 * DAY);
+      const hs = semDoc.filter((r) => nfTipo(r[2]) !== "GUIA" && !usadas.has(r) && !sugeridas.has(r) && Math.abs((r[7] || 0) - gap) < 0.005 && parseDate(r[5]) >= parseDate(x.d.data) - 30 * DAY);
       if (hs.length === 1 && (mesmo(hs[0]) || (gap >= 1000 && Math.round(gap * 100) % 100 !== 0))) {
-        usadas.add(hs[0]); x.st = "okfin"; x.fin = { total: gap, tits: [hs[0]], outro: !mesmo(hs[0]) };
+        sugeridas.add(hs[0]); x.finSug = true; x.fin = { total: gap, tits: [hs[0]], outro: !mesmo(hs[0]) };
       }
     }
     // nota lançada no pedido irmão: pedidos da mesma cotação (ou do mesmo fornecedor no mesmo dia) cujas diferenças se anulam
@@ -2625,7 +2667,7 @@ ${eap.txt}`;
     for (const x of linhas) {
       const e = exp[x.d.id]; if (!e) continue;
       const meu = nomeKey(x.d.forn), ok = new Set(e.tits || []);
-      x.novos = x.tits.filter((t) => t.tipo !== "GUIA" && t.tipo !== "CAU" && nomeKey(t.r[1]) !== meu && !ok.has(titKey(t.r)));
+      x.novos = x.tits.filter((t) => !t.finOk && t.tipo !== "GUIA" && t.tipo !== "CAU" && nomeKey(t.r[1]) !== meu && !ok.has(titKey(t.r)));
       x.exp = e;
       if (!x.novos.length) x.st = "okexp";
     }
@@ -2704,10 +2746,13 @@ ${eap.txt}`;
         `<details><summary class="hint">ver medições</summary>${x.ex[6].map((m) => `<div class="hint">Medição ${m[0]} · ${esc(m[1])} · <span class="num">${fmt(m[4])}</span>${m[3] ? ` (reajuste ${fmt(m[3])})` : ""}${m[5] ? ` · caução ${fmt(m[5])}` : ""}</div>`).join("")}</details>` : "") +
       (x.novos?.length ? `<div class="qc-warn" style="margin-top:4px">Nota nova de outro fornecedor desde a sua conferência: ${x.novos.map((t) => `<b>${esc(t.r[1].replace(/^\d+\s*-\s*/, ""))}</b> ${esc(t.r[2])} ${esc(t.r[5])} ${fmt(t.parte)}`).join(" · ")}. É deste ${x.d.tipo === "CT" ? "contrato" : "pedido"}?</div>` : "") +
       (x.exp ? `<div class="hint" style="color:var(--ok)">Conferido por você${x.exp.obs ? `: ${esc(x.exp.obs)}` : ""}</div>` : "") +
-      ((x.st === "acima" || x.st === "falta" || x.novos?.length) ? `<div class="row" style="margin-top:4px"><input id="exp-obs-${esc(x.d.id.replace(/\W/g, "_"))}" placeholder="Observação (ex.: Uvolt = instaladora)" value="${esc(x.exp?.obs || "")}" style="width:16rem"><button class="btn" type="button" data-exp="${esc(x.d.id)}">${x.novos?.length ? "Sim, é deste" : "Divergência explicada"}</button></div>` :
+      ((x.st === "acima" || x.st === "falta" || x.st === "liberar" || x.st === "semnota" || x.novos?.length) ? `<div class="row" style="margin-top:4px"><input id="exp-obs-${esc(x.d.id.replace(/\W/g, "_"))}" placeholder="Observação (ex.: Uvolt = instaladora)" value="${esc(x.exp?.obs || "")}" style="width:16rem">` +
+        (x.finSug ? `<button class="btn primary" type="button" data-exp="${esc(x.d.id)}" data-fin="${esc(x.fin.tits.map(titKey).join("||"))}">Sim, a nota do financeiro é deste</button>` : "") +
+        (x.st !== "liberar" && x.st !== "semnota" || x.novos?.length ? `<button class="btn" type="button" data-exp="${esc(x.d.id)}">${x.novos?.length ? "Sim, é deste" : "Divergência explicada"}</button>` : "") + `</div>` :
         x.st === "okexp" ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-unexp="${esc(x.d.id)}">Desfazer conferência</button></div>` : "") +
       (x.irmaos ? `<div class="hint">Nota lançada junto com ${esc(x.irmaos.join(", "))}: as diferenças se anulam</div>` : "") +
-      (x.fin ? `<div class="hint${x.st === "okfin" ? "" : " neg"}">${x.st === "okfin" ? (x.fin.outro ? `Fecha com a nota de ${esc(x.fin.tits[0][1].replace(/^\d+\s*-\s*/, ""))} (${esc(x.fin.tits[0][2])}, ${fmt(x.fin.total)}) lançada pelo financeiro: confira se é faturamento direto` : `Fecha com ${fmt(x.fin.total)} lançados pelo financeiro sem o nº do ${x.d.tipo === "CT" ? "contrato" : "pedido"}`) : `O mesmo fornecedor tem ${fmt(x.fin.total)} lançados pelo financeiro sem nº de pedido/contrato`}</div>` +
+      (x.fin && x.finSug ? `<div class="qc-warn" style="margin-top:4px">Possível nota lançada pelo financeiro sem o nº deste ${x.d.tipo === "CT" ? "contrato" : "pedido"}: ${x.fin.tits.map((r) => `<b>${esc(r[1].replace(/^\d+\s*-\s*/, ""))}</b> ${esc(r[2])} ${esc(r[5])} ${fmt(r[7])}`).join(" · ")}${x.fin.tits.length > 1 ? ` (total ${fmt(x.fin.total)})` : ""}. Ela não está no ${x.d.tipo === "CT" ? "contrato" : "pedido"} no Sienge: só conta se você confirmar.</div>` : "") +
+      (x.fin && !x.finSug ? `<div class="hint${x.st === "okfin" ? "" : " neg"}">${x.st === "okfin" ? (x.fin.outro ? `Fecha com a nota de ${esc(x.fin.tits[0][1].replace(/^\d+\s*-\s*/, ""))} (${esc(x.fin.tits[0][2])}, ${fmt(x.fin.total)}) lançada pelo financeiro: confira se é faturamento direto` : `Fecha com ${fmt(x.fin.total)} lançados pelo financeiro sem o nº do ${x.d.tipo === "CT" ? "contrato" : "pedido"}`) : `O mesmo fornecedor tem ${fmt(x.fin.total)} lançados pelo financeiro sem nº de pedido/contrato`}</div>` +
         titsBox(x.fin.tits.map((r) => ({ r, parte: r[7], tipo: nfTipo(r[2]) })), "ver notas do financeiro") : "") + `</td>`;
     const lbl = (x) => x.d.tipo === "CT" ? "medido" : "entregue";
     let h = "";
@@ -2747,7 +2792,8 @@ ${eap.txt}`;
     if (b.dataset.unexp) delete novo[b.dataset.unexp];
     else {
       const id = b.dataset.exp, x = nfAnalise().linhas.find((l) => l.d.id === id); if (!x) return;
-      novo[id] = { tits: x.tits.map((t) => titKey(t.r)), obs: ($("exp-obs-" + id.replace(/\W/g, "_"))?.value || "").trim(), em: new Date().toISOString() };
+      const fin = b.dataset.fin ? b.dataset.fin.split("||") : (S.explicados?.[id]?.fin || []);
+      novo[id] = { tits: x.tits.filter((t) => !t.finOk).map((t) => titKey(t.r)), ...(fin.length ? { fin } : {}), obs: ($("exp-obs-" + id.replace(/\W/g, "_"))?.value || "").trim(), em: new Date().toISOString() };
     }
     try { await S.db.doc("config/explicados").set(novo); } catch (e) { alert(errText(e)); }
   });
