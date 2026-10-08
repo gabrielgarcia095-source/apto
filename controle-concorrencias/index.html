@@ -193,13 +193,21 @@ dl.kv dd { margin: 0; }
 
   <!-- Módulos: uma etapa do processo de compra em cada um -->
   <nav class="mods" role="tablist" aria-label="Etapas">
-    <button class="mod" type="button" role="tab" data-mod="hoje" aria-selected="true"><span class="mod-n">✓</span><span class="mod-t"><b>O que fazer</b><span class="mod-s" id="mod-s-hoje">Pendências de todas as etapas</span></span></button>
+    <button class="mod" type="button" role="tab" data-mod="res" aria-selected="true"><span class="mod-n">R$</span><span class="mod-t"><b>Orçamento × Consumido</b><span class="mod-s" id="mod-s-res">Quanto volta ou falta no orçamento</span></span></button>
+    <button class="mod" type="button" role="tab" data-mod="hoje" aria-selected="false"><span class="mod-n">✓</span><span class="mod-t"><b>O que fazer</b><span class="mod-s" id="mod-s-hoje">Pendências de todas as etapas</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="orc" aria-selected="false"><span class="mod-n">1</span><span class="mod-t"><b>Cotação × Orçamento</b><span class="mod-s" id="mod-s-orc">Lançamento na planilha de orçamento</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="ped" aria-selected="false"><span class="mod-n">2</span><span class="mod-t"><b>Cotação × Pedido / contrato</b><span class="mod-s" id="mod-s-ped">Pedidos e contratos do Sienge</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="nf" aria-selected="false"><span class="mod-n">3</span><span class="mod-t"><b>Pedido × Nota fiscal</b><span class="mod-s" id="mod-s-nf">Notas do Sienge</span></span></button>
   </nav>
 
-  <div id="mod-hoje" class="modbody">
+  <div id="mod-res" class="modbody">
+    <div class="row modbar"><h2>Orçamento × Consumido</h2><span class="hint">Por cotação: o que você lançou na planilha de orçamento, o que comprou (pedido/contrato) e o que consumiu de fato (notas/entregue). Encerrada = todos os pedidos/contratos encerrados.</span></div>
+    <section class="summary" id="res-summary" aria-label="Resumo"></section>
+    <div class="row" style="gap:8px"><input id="res-q" type="search" placeholder="Buscar cotação, fornecedor, pedido…" style="flex:1;min-width:200px"><button class="btn" type="button" id="res-xlsx" hidden>Baixar esta lista (.xlsx)</button></div>
+    <div id="res-list"></div>
+  </div>
+
+  <div id="mod-hoje" class="modbody" hidden>
     <div class="row modbar"><h2>O que fazer</h2><span class="hint">Só o que precisa de você, do maior valor para o menor. O que estiver em dia sai daqui sozinho.</span></div>
     <div id="hoje-list" class="hoje"></div>
   </div>
@@ -657,7 +665,7 @@ dl.kv dd { margin: 0; }
   }
 
   function renderAll() {
-    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); renderPed(); renderNf(); renderHoje(); updateCheck();
+    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); renderPed(); renderNf(); renderHoje(); renderRes(); updateCheck();
   }
 
   // ---------- formulário ----------
@@ -815,8 +823,9 @@ dl.kv dd { margin: 0; }
   // ---------- módulos ----------
   function selectMod(m) {
     for (const b of document.querySelectorAll(".mod")) b.setAttribute("aria-selected", String(b.dataset.mod === m));
-    for (const n of ["hoje", "orc", "ped", "nf"]) $("mod-" + n).hidden = n !== m;
+    for (const n of ["res", "hoje", "orc", "ped", "nf"]) $("mod-" + n).hidden = n !== m;
     if (m === "hoje") renderHoje();
+    if (m === "res") renderRes();
   }
   for (const b of document.querySelectorAll(".mod")) b.addEventListener("click", () => selectMod(b.dataset.mod));
   // abre sempre em "O que fazer"
@@ -2116,6 +2125,86 @@ ${eap.txt}`;
     const hs = nfAnalise().semDoc.filter((r) => nfTipo(r[2]) !== "GUIA" && Math.abs((r[7] || 0) - c.valor) < 0.005);
     return hs.length === 1 ? `<div class="hint" style="color:var(--ok)">Nota de mesmo valor lançada no financeiro: ${esc(hs[0][1].replace(/^\d+\s*-\s*/, ""))} · ${esc(hs[0][2])} · ${esc(hs[0][5])}. Se for esta, use "Lançado no financeiro".</div>` : "";
   }
+  // ---------- Orçamento × Consumido: por cotação, quanto volta ou falta no orçamento ----------
+  //  Orçamento = lançado na aba LANÇAMENTOS · Comprado = pedidos/contratos ligados (parte da cotação) ·
+  //  Consumido = o maior entre entregue/medido e notas lançadas (faturamento direto não soma: já está no contrato).
+  //  Encerrada = todos os pedidos/contratos cancelados, concluídos, rescindidos ou totalmente atendidos/medidos.
+  S.resF = (() => { try { return localStorage.getItem("cc-resf") || "dev"; } catch { return "dev"; } })();
+  const encerrado = (d) => /Cancel|Rescind|Conclu|Totalmente/i.test(d.sit);
+  function resRows() {
+    const nfBy = S.nfMeta && temDocs() ? new Map(nfAnalise().linhas.map((x) => [x.d.id, x])) : new Map();
+    const r2 = (v) => Math.round(v * 100) / 100;
+    return D.rows.filter((c) => c.valor > 0 || c.lanc > 0).map((c) => {
+      const certos = temDocs() ? elosOf(c.id).certos.filter((e) => !e.fd) : [];
+      let comprado = 0, consumido = 0, notas = 0;
+      const docs = certos.map((e) => {
+        const d = e.doc, f = e.parte != null && d.prim > 0 ? e.parte / d.prim : 1, n = nfBy.get(d.id);
+        const nf = n ? n.nf : 0, uso = Math.max(d.sec || 0, nf);
+        comprado += e.parte != null ? e.parte : d.prim; consumido += uso * f; notas += nf * f;
+        return { d, f, nf, uso, enc: encerrado(d) };
+      });
+      const j = justOf(c.id);
+      const sit = !docs.length ? "sem" : docs.every((x) => x.enc) ? "enc" : "and";
+      comprado = r2(comprado); consumido = r2(consumido);
+      // nº de cotação repetido: o lançado é do nº inteiro; cada cotação fica com a sua parte (pelo valor aprovado)
+      const nk = D.keyCount.get(c.k) || 1, base = nk > 1 ? [...S.cot.values()].filter((o) => key(o.num) === c.k).reduce((t, o) => t + (o.valor || 0), 0) : 0;
+      const lanc = nk > 1 && base > 0 ? r2(c.lanc * (c.valor || 0) / base) : c.lanc;
+      const nada = sit === "enc" && docs.every((x) => /Cancel|Rescind/i.test(x.d.sit) && !(x.uso > 0));
+      const ajuste = sit === "enc" ? r2(lanc - consumido) : null;      // + volta ao orçamento, − falta
+      const aConsumir = sit === "and" ? r2(Math.max(0, comprado - consumido)) : null;
+      return { c: { ...c, lanc }, docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
+    });
+  }
+  function renderRes() {
+    const box = $("res-list"); if (!box || !S.loadedCot) return;
+    const R = resRows(), tol = (x) => Math.max(1, (x.c.lanc || 0) * 0.005);
+    const L = {
+      dev: R.filter((x) => x.sit === "enc" && x.ajuste > tol(x)).sort((a, b) => b.ajuste - a.ajuste),
+      add: R.filter((x) => x.sit === "enc" && x.ajuste < -tol(x)).sort((a, b) => a.ajuste - b.ajuste),
+      and: R.filter((x) => x.sit === "and").sort((a, b) => b.comprado - a.comprado),
+      sem: R.filter((x) => x.sit === "sem").sort((a, b) => (b.c.valor || 0) - (a.c.valor || 0)),
+      ok: R.filter((x) => x.sit === "enc" && Math.abs(x.ajuste) <= tol(x)),
+    };
+    const soma = (l, f) => l.reduce((t, x) => t + (f(x) || 0), 0);
+    const tiles = [
+      ["dev", "Devolver ao orçamento", fmt(soma(L.dev, (x) => x.ajuste)), `${L.dev.length} cotações encerradas que consumiram menos que o lançado`, "var(--ok)"],
+      ["add", "Acrescentar ao orçamento", fmt(-soma(L.add, (x) => x.ajuste)), `${L.add.length} cotações encerradas que consumiram mais que o lançado`, "var(--bad)"],
+      ["and", "Em andamento", L.and.length, `${fmt(soma(L.and, (x) => x.aConsumir))} ainda a consumir dos pedidos/contratos`, "var(--wait)"],
+      ["sem", "Sem pedido/contrato", L.sem.length, `${fmt(soma(L.sem, (x) => x.c.lanc))} lançados no orçamento`, "var(--none)"],
+      ["ok", "Fechadas certinho", L.ok.length, "Consumido igual ao lançado", "var(--ok)"],
+    ];
+    $("mod-s-res").textContent = `Devolver ${fmt(soma(L.dev, (x) => x.ajuste))} · acrescentar ${fmt(-soma(L.add, (x) => x.ajuste))}`;
+    $("res-summary").innerHTML = tiles.map(([k, l, n, sub, cor]) => `<button type="button" class="tile tbtn" data-rf="${k}" aria-pressed="${S.resF === k}"><span class="eyebrow"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cor};margin-right:6px"></span>${l}</span><span class="v">${n}</span><span class="s">${sub}</span></button>`).join("");
+    const q = fold($("res-q").value.trim());
+    const rows = (L[S.resF] || []).filter((x) => !q || fold(`${x.c.num} ${x.c.desc} ${x.docs.map((d) => d.d.id + " " + d.d.forn).join(" ")}`).includes(q));
+    S.resView = rows;
+    const forn = (x) => [...new Set(x.docs.map((d) => d.d.forn))].join(", ");
+    const det = (x) => `<details><summary class="hint">detalhes</summary>` +
+      x.docs.map((d) => `<div class="hint"><b>${esc(d.d.id)}</b> · ${esc(d.d.sit)} · ${d.d.tipo === "CT" ? "contratado" : "pedido"} ${fmt(d.d.prim)}${d.f < 1 ? ` (desta cotação ${fmt(d.d.prim * d.f)})` : ""} · ${d.d.tipo === "CT" ? "medido" : "entregue"} ${fmt(d.d.sec)} · notas ${fmt(d.nf)}</div>`).join("") +
+      (x.linhas.length ? x.linhas.map((l) => `<div class="hint">Planilha: ID ${esc(l[4] ?? "")} · ${esc(l[2] || "")} · ${esc(l[3] || "")} · <span class="num">${fmt(l[1])}</span></div>`).join("") : `<div class="hint">Não está na planilha de orçamento.</div>`) + `</details>`;
+    const col = { dev: "Devolver", add: "Acrescentar", and: "A consumir", sem: "Situação", ok: "Ajuste" };
+    const ult = (x) => x.sit === "enc" ? `<b class="num${x.ajuste < 0 ? " neg" : ""}">${Math.abs(x.ajuste) < 0.01 ? "—" : fmt(Math.abs(x.ajuste))}</b>` : x.sit === "and" ? `<span class="num">${fmt(x.aConsumir)}</span>` : (x.j ? `<span class="hint">${esc(x.j.motivo === "financeiro" ? "lançado no financeiro" : "não gerou pedido")}${x.j.obs ? ": " + esc(x.j.obs) : ""}</span>` : `<span class="hint">sem pedido</span>`);
+    box.innerHTML = tbl(["Cotação", "Orçamento (lançado)", "Comprado", "Consumido", col[S.resF] || ""], rows.map((x) =>
+      `<tr><td><b class="num">${esc(x.c.num)}</b> ${esc(x.c.desc)}<div class="hint">${esc(forn(x)) || "&nbsp;"}</div>` +
+      (x.nada ? `<div class="qc-warn" style="margin-top:4px">Pedido cancelado sem entrega. Se a compra foi refeita em outro pedido, vincule-o à cotação (módulo 2); se não houve compra, o valor volta ao orçamento.</div>` : "") +
+      (x.rep ? `<div class="hint">Nº ${esc(x.c.num)} usado em mais de uma cotação: lançado dividido pelo valor aprovado.</div>` : "") + `${det(x)}</td>` +
+      `<td class="r num">${x.c.lanc ? fmt(x.c.lanc) : `<span class="neg">não lançado</span>`}</td><td class="r num">${x.docs.length ? fmt(x.comprado) : "—"}</td><td class="r num">${x.docs.length ? fmt(x.consumido) : "—"}</td><td class="r">${ult(x)}</td></tr>`),
+      S.resF === "dev" ? "Nenhuma cotação encerrada com sobra." : "Nada aqui.");
+  }
+  $("res-summary").addEventListener("click", (ev) => { const b = ev.target.closest("[data-rf]"); if (!b) return; S.resF = b.dataset.rf; try { localStorage.setItem("cc-resf", S.resF); } catch {} renderRes(); });
+  $("res-q").addEventListener("input", () => renderRes());
+  $("res-xlsx").addEventListener("click", async () => {
+    const dl = await claude.use("downloads"); if (!dl) return;
+    const nome = { dev: "DEVOLVER", add: "ACRESCENTAR", and: "EM_ANDAMENTO", sem: "SEM_PEDIDO", ok: "FECHADAS" }[S.resF] || "LISTA";
+    const out = [["Nº COTAÇÃO", "DESCRIÇÃO", "FORNECEDOR", "PEDIDOS/CONTRATOS", "SITUAÇÃO", "ORÇAMENTO (LANÇADO)", "COMPRADO", "CONSUMIDO", "AJUSTE (+ DEVOLVER / − ACRESCENTAR)", "A CONSUMIR", "LINHAS DA PLANILHA (ID · ITEM · VALOR)"]];
+    for (const x of S.resView || []) out.push([/^\d+$/.test(x.c.num) ? Number(x.c.num) : x.c.num, x.c.desc, [...new Set(x.docs.map((d) => d.d.forn))].join("; "), x.docs.map((d) => `${d.d.id} (${d.d.sit})`).join("; "),
+      x.sit === "enc" ? "Encerrada" : x.sit === "and" ? "Em andamento" : "Sem pedido", x.c.lanc || 0, x.docs.length ? x.comprado : null, x.docs.length ? x.consumido : null, x.ajuste, x.aConsumir,
+      x.linhas.map((l) => `ID ${l[4] ?? ""} · ${l[2] || ""} · ${l[1]}`).join(" | ")]);
+    const ws = XLSX.utils.aoa_to_sheet(out); ws["!cols"] = [{ wch: 12 }, { wch: 40 }, { wch: 36 }, { wch: 36 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 60 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, nome.slice(0, 30));
+    try { await dl.save({ filename: `ORCAMENTO_X_CONSUMIDO_${nome}_${new Date().toISOString().slice(0, 10)}.xlsx`, data: new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" })) }); } catch {}
+  });
+
   // ---------- O que fazer: pendências das 3 etapas, por onde agir ----------
   function renderHoje() {
     const box = $("hoje-list"); if (!box || !S.loadedCot) return;
@@ -2678,7 +2767,7 @@ ${eap.txt}`;
     }
     S.db = db;
     $("btn-save").disabled = false;
-    claude.use("downloads").then((dl) => { if (dl) { $("btn-export").hidden = false; $("btn-falta").hidden = false; } });
+    claude.use("downloads").then((dl) => { if (dl) { $("btn-export").hidden = false; $("btn-falta").hidden = false; $("res-xlsx").hidden = false; } });
     claude.use("sample").then((sm) => { if (sm) $("qc-panel").hidden = false; });
     let first = true;
     db.collection("cotacoes").limit(1000).onSnapshot((snap) => {
