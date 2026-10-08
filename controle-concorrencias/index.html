@@ -2153,7 +2153,7 @@ ${eap.txt}`;
       const lanc = nk > 1 && base > 0 ? r2(c.lanc * (c.valor || 0) / base) : c.lanc;
       const nada = sit === "enc" && docs.every((x) => /Cancel|Rescind/i.test(x.d.sit) && !(x.uso > 0));
       const ajuste = sit === "enc" ? r2(lanc - consumido) : null;      // + volta ao orçamento, − falta
-      const aConsumir = sit === "and" ? r2(Math.max(0, comprado - consumido)) : null;
+      const aConsumir = sit === "and" ? r2(comprado - consumido) : null;   // negativo: já passou do pedido/contrato
       return { c: { ...c, lanc }, docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
     });
   }
@@ -2163,7 +2163,7 @@ ${eap.txt}`;
     const L = {
       dev: R.filter((x) => x.sit === "enc" && x.ajuste > tol(x)).sort((a, b) => b.ajuste - a.ajuste),
       add: R.filter((x) => x.sit === "enc" && x.ajuste < -tol(x)).sort((a, b) => a.ajuste - b.ajuste),
-      and: R.filter((x) => x.sit === "and").sort((a, b) => b.comprado - a.comprado),
+      and: R.filter((x) => x.sit === "and").sort((a, b) => (a.aConsumir < 0) === (b.aConsumir < 0) ? b.comprado - a.comprado : a.aConsumir < 0 ? -1 : 1),
       sem: R.filter((x) => x.sit === "sem").sort((a, b) => (b.c.valor || 0) - (a.c.valor || 0)),
       ok: R.filter((x) => x.sit === "enc" && Math.abs(x.ajuste) <= tol(x)),
     };
@@ -2171,7 +2171,7 @@ ${eap.txt}`;
     const tiles = [
       ["dev", "Devolver ao orçamento", fmt(soma(L.dev, (x) => x.ajuste)), `${L.dev.length} cotações encerradas que consumiram menos que o lançado`, "var(--ok)"],
       ["add", "Acrescentar ao orçamento", fmt(-soma(L.add, (x) => x.ajuste)), `${L.add.length} cotações encerradas que consumiram mais que o lançado`, "var(--bad)"],
-      ["and", "Em andamento", L.and.length, `${fmt(soma(L.and, (x) => x.aConsumir))} ainda a consumir dos pedidos/contratos`, "var(--wait)"],
+      ["and", "Em andamento", L.and.length, `${fmt(soma(L.and, (x) => Math.max(0, x.aConsumir)))} ainda a consumir` + (L.and.some((x) => x.aConsumir < -Math.max(1, x.comprado * 0.005)) ? ` · ${L.and.filter((x) => x.aConsumir < -Math.max(1, x.comprado * 0.005)).length} já passaram do pedido` : ""), "var(--wait)"],
       ["sem", "Sem pedido/contrato", L.sem.length, `${fmt(soma(L.sem, (x) => x.c.lanc))} lançados no orçamento`, "var(--none)"],
       ["ok", "Fechadas certinho", L.ok.length, "Consumido igual ao lançado", "var(--ok)"],
     ];
@@ -2187,7 +2187,7 @@ ${eap.txt}`;
         (d.uso > d.d.prim * 1.005 ? `<div class="hint neg" style="padding-left:12px">Consumido acima do ${d.d.tipo === "CT" ? "contrato" : "pedido"} em ${fmt(d.uso - d.d.prim)}${d.nf > (d.d.sec || 0) ? ` (notas passam o entregue em ${fmt(d.nf - (d.d.sec || 0))})` : ""}</div>` : "")).join("") +
       (x.linhas.length ? x.linhas.map((l) => `<div class="hint">Planilha: ID ${esc(l[4] ?? "")} · ${esc(l[2] || "")} · ${esc(l[3] || "")} · <span class="num">${fmt(l[1])}</span></div>`).join("") : `<div class="hint">Não está na planilha de orçamento.</div>`) + `</details>`;
     const col = { dev: "Devolver", add: "Acrescentar", and: "A consumir", sem: "Situação", ok: "Ajuste" };
-    const ult = (x) => x.sit === "enc" ? `<b class="num${x.ajuste < 0 ? " neg" : ""}">${Math.abs(x.ajuste) < 0.01 ? "—" : fmt(Math.abs(x.ajuste))}</b>` : x.sit === "and" ? `<span class="num">${fmt(x.aConsumir)}</span>` : (x.j ? `<span class="hint">${esc(x.j.motivo === "financeiro" ? "lançado no financeiro" : "não gerou pedido")}${x.j.obs ? ": " + esc(x.j.obs) : ""}</span>` : `<span class="hint">sem pedido</span>`);
+    const ult = (x) => x.sit === "enc" ? `<b class="num${x.ajuste < 0 ? " neg" : ""}">${Math.abs(x.ajuste) < 0.01 ? "—" : fmt(Math.abs(x.ajuste))}</b>` : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? `<b class="num neg">já passou ${fmt(-x.aConsumir)}</b>` : `<span class="num">${fmt(Math.max(0, x.aConsumir))}</span>`) : (x.j ? `<span class="hint">${esc(x.j.motivo === "financeiro" ? "lançado no financeiro" : "não gerou pedido")}${x.j.obs ? ": " + esc(x.j.obs) : ""}</span>` : `<span class="hint">sem pedido</span>`);
     box.innerHTML = tbl(["Cotação", "Orçamento (lançado)", "Comprado", "Consumido", col[S.resF] || ""], rows.map((x) =>
       `<tr><td><b class="num">${esc(x.c.num)}</b> ${esc(x.c.desc)}<div class="hint">${esc(forn(x)) || "&nbsp;"}</div>` +
       (x.nada ? `<div class="qc-warn" style="margin-top:4px">Pedido cancelado sem entrega. Se a compra foi refeita em outro pedido, vincule-o à cotação (módulo 2); se não houve compra, o valor volta ao orçamento.</div>` : "") +
