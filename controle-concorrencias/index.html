@@ -2133,6 +2133,8 @@ ${eap.txt}`;
   }
   // uma linha por cotação: QC · fornecedor · PC/CT · notas · valores; clique abre o caminho completo
   S.rasOpen = null;
+  // nº para ordenar: "AD 93"/"DV 179" ficam junto da 93/179 (logo acima dela); nome sem número vai para o fim
+  const numOrd = (c) => { const o = origemDe(c.num), m = String(o ? o.orig : c.num).match(/^\s*(\d+)/); return m ? Number(m[1]) + (o ? 0.5 : 0) : -1; };
   function rasRows() {
     const q = fold($("ras-q").value.trim()), R = resRows(), A = S.nfMeta && temDocs() ? nfAnalise() : null;
     const linhaDe = new Map((A?.linhas || []).map((x) => [x.d.id, x]));
@@ -2141,7 +2143,7 @@ ${eap.txt}`;
     const hitDoc = (d) => fold(`${d.id} ${d.forn}`).includes(q) || (/^\d+$/.test(qn) && d.tipo === "PC" && String(d.num) === qn) || (qn.length >= 4 || !/^\d+$/.test(qn)) && notasDe(d.id).some((t) => fold(`${t.r[2]} ${t.r[1]}`).includes(q));
     const rows = R.filter((x) => !q || fold(`${x.c.num} ${x.c.desc}`).includes(qn) || key(x.c.num) === key(qn) || x.docs.some((d) => hitDoc(d.d)))
       .map((x) => ({ x, notas: x.docs.flatMap((d) => notasDe(d.d.id).map((t) => ({ ...t, doc: d.d.id }))) }))
-      .sort((a, b) => (key(b.x.c.num) === key(qn)) - (key(a.x.c.num) === key(qn)) || (a.x.c.ordem ?? 0) - (b.x.c.ordem ?? 0));
+      .sort((a, b) => (key(b.x.c.num) === key(qn)) - (key(a.x.c.num) === key(qn)) || numOrd(b.x.c) - numOrd(a.x.c) || (b.x.c.ordem ?? 0) - (a.x.c.ordem ?? 0)); // maior nº primeiro; sem nº no fim
     const usados = new Set(R.flatMap((x) => x.docs.map((d) => d.d.id)));
     const soltos = q && temDocs() ? elosAll().docs.filter((d) => !usados.has(d.id) && hitDoc(d)) : [];
     return { rows, soltos };
@@ -2268,7 +2270,7 @@ ${eap.txt}`;
       const linha = `<tr class="ras-row" data-rasopen="${esc(x.c.id)}" style="cursor:pointer"><td><b class="num">${esc(x.c.num)}</b></td><td>${esc(x.c.desc)}<div>${tags(x)}</div></td><td class="r num">${fmt(x.c.valor)}</td><td class="r">${orc(x)}</td>` +
         `<td>${ped(x)}</td><td>${nfs(x, notas)}</td><td class="r">${res(x)}</td></tr>`;
       return linha + (S.rasOpen === x.c.id ? `<tr class="detail"><td colspan="7">${rasDetail(x, K)}</td></tr>` : "");
-    }), q ? "Nada encontrado." : "Nada aqui. Escolha outro filtro.");
+    }), q ? "Nada encontrado." : "Nada aqui. Escolha outro filtro.", Infinity);
     if (rows.length > LIM) h += `<div class="row" style="margin-top:8px"><button class="btn" type="button" id="ras-all">Mostrar todas (${rows.length})</button></div>`;
     if (soltos.length) h += `<h2 style="margin:14px 0 8px">Pedidos/contratos sem cotação</h2>` + soltos.slice(0, 20).map((d) => `<details class="ras-card"><summary><b>${esc(d.id)}</b> ${esc(d.forn)} · <span class="pill s-FALTA">sem cotação</span></summary>${rasDocHtml({ d, f: 1, parte: null }, "")}` +
       `<div class="row" style="margin-top:6px"><input id="lk-cot-${d.id.replace(/\W/g, "_")}" placeholder="Nº da cotação" style="width:8rem"><button class="btn" type="button" data-el="doc2cot" data-doc="${esc(d.id)}">Vincular</button>${errBtn(d)}</div></details>`).join("");
@@ -2351,9 +2353,9 @@ ${eap.txt}`;
       `<button class="btn" type="button" data-el="just" data-motivo="financeiro" data-cot="${esc(cid)}">Lançado no financeiro</button>` +
       (soFin ? "" : `<button class="btn" type="button" data-el="just" data-motivo="semPedido" data-cot="${esc(cid)}">Não gerou pedido</button>`) + `</div>`;
   }
-  function tbl(head, rows, vazio) {
+  function tbl(head, rows, vazio, max = 300) {
     return `<div class="tablebox"><table><thead><tr>${head.map((x, i) => `<th${i === 1 && x !== "Valor" && x !== "Descrição" ? ' class="r"' : x === "Valor" || x === "Efetivo" || x.startsWith("Diferença") ? ' class="r"' : ""}>${x}</th>`).join("")}</tr></thead><tbody>` +
-      (rows.length ? rows.slice(0, 300).join("") + (rows.length > 300 ? `<tr><td colspan="${head.length}" class="hint">Mostrando 300 de ${rows.length}. Use a busca.</td></tr>` : "") : `<tr><td colspan="${head.length}" class="empty">${vazio}</td></tr>`) + `</tbody></table></div>`;
+      (rows.length ? rows.slice(0, max).join("") + (rows.length > max ? `<tr><td colspan="${head.length}" class="hint">Mostrando ${max} de ${rows.length}. Use a busca.</td></tr>` : "") : `<tr><td colspan="${head.length}" class="empty">${vazio}</td></tr>`) + `</tbody></table></div>`;
   }
   // Lista do "Vincular": pedidos/contratos livres e os que ainda têm sobra sem cotação (ex.: CT/142 com aditivos)
   let docListKey = null;
