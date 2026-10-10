@@ -2361,7 +2361,11 @@ ${eap.txt}`;
     if (ev.target.closest("#ras-all")) { S.rasAll = true; renderRas(); return; }
     if (ev.target.closest(".detail, details, button, a, input")) return;
     const r = ev.target.closest("[data-rasopen]"); if (!r) return;
-    S.rasOpen = S.rasOpen === r.dataset.rasopen ? null : r.dataset.rasopen; renderRas();
+    // o item clicado fica no mesmo lugar da tela (o que estava aberto acima fecha e empurraria tudo para cima)
+    const id = r.dataset.rasopen, antes = r.getBoundingClientRect().top;
+    S.rasOpen = S.rasOpen === id ? null : id; renderRas();
+    const novo = $("ras-list").querySelector(`[data-rasopen="${CSS.escape(id)}"]`);
+    if (novo) window.scrollBy(0, novo.getBoundingClientRect().top - antes);
   });
   $("ras-xlsx").addEventListener("click", async () => {
     const dl = await claude.use("downloads"); if (!dl) return;
