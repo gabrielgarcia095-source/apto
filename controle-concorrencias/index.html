@@ -1490,10 +1490,12 @@ ${eap.txt}`;
   // palavras do documento: fornecedor + descrição dos itens do pedido (Relação de Pedidos)
   const docToks = (d) => toks(`${d.forn} ${(itensOf(d)?.[7] || []).map((i) => i[0]).join(" ")}`);
   const raiz = (set) => new Map([...set].map((w) => [w.slice(0, 5), w]));
+  const fatDir = (d) => { const it = itensOf(d)?.[7]; return !!it?.length && it.every((i) => /FATURAMENTO DIRETO/i.test(fold(i[0]))); };
   function matchAll(cotList, docs, elos) {
     const fixedList = elos?.links || [];   // [{ doc, cot, parte? }]: um documento pode estar em mais de uma cotação
     const rej = elos?.rej || {};            // docId -> [cotId, ...]
     const byId = new Map(docs.map((d) => [d.id, d]));
+    const todosDocs = docs; docs = docs.filter((d) => !fatDir(d)); // faturamento direto não entra na ligação automática
     const res = new Map(cotList.map((c) => [c.id, { certos: [], sugestoes: [] }]));
     const usedDoc = new Set();
     for (const l of fixedList) {
@@ -1606,10 +1608,10 @@ ${eap.txt}`;
     const linkedTo = new Map(); // documento -> cotações já ligadas por você
     for (const l of fixedList) (linkedTo.get(l.doc) || linkedTo.set(l.doc, []).get(l.doc)).push(l.cot);
     const cotById = new Map(cotList.map((c) => [c.id, c]));
-    const sugSoma = (d, c, por, parte, score) => {
+    const sugSoma = (d, c, por, parte, score, forte) => {
       if ((linkedTo.get(d.id) || []).includes(c.id) || isRej(d, c)) return;
       const r = res.get(c.id); if (r.sugestoes.some((s) => s.doc.id === d.id)) return;
-      r.sugestoes.push({ doc: d, por, score, soma: true, parte: Math.round(parte * 100) / 100 });
+      r.sugestoes.push({ doc: d, por, score, soma: true, parte: Math.round(parte * 100) / 100, forte: !!forte });
     };
     // ---- vários vencedores: conta "a + b + c" na cotação, um pedido por fornecedor ----
     // Achado o pedido de uma parte, os das outras partes têm de ter o valor exato e data a até 10 dias dele.
@@ -1658,7 +1660,7 @@ ${eap.txt}`;
       if (!combos.length || combos.length > 3) continue;
       for (const combo of combos) for (const c of combo) {
         const outras = combo.filter((o) => o !== c).map((o) => o.num).join(" + ");
-        sugSoma(d, c, `soma: esta cotação + ${outras} = ${d.tipo === "CT" ? "valor contratado" : "total do pedido"} (${fmt(d.prim)})`, c.valor, 45);
+        sugSoma(d, c, `soma: esta cotação + ${outras} = ${d.tipo === "CT" ? "valor contratado" : "total do pedido"} (${fmt(d.prim)})`, c.valor, 45, combos.length === 1);
       }
     }
     // (b) cotação + uma parte da conta de um aditivo (ex.: CT/144 = cremalheira + 39.841,20 do aditivo).
@@ -1678,8 +1680,8 @@ ${eap.txt}`;
         if (alvos.length !== 1) continue;
         const a = alvos[0];
         const por = `soma: ${d.id} = cotação ${a.num} (${fmt(a.valor)}) + ${fmt(p.v)} do aditivo ${p.c.num} · o aditivo cita o fornecedor`;
-        sugSoma(d, a, por, a.valor, 50);
-        sugSoma(d, p.c, por, p.v, 50);
+        sugSoma(d, a, por, a.valor, 50, true);
+        sugSoma(d, p.c, por, p.v, 50, true);
       }
     }
     // (d) compra dividida em 2 ou 3 pedidos do mesmo fornecedor que somam o aprovado ao centavo
@@ -1717,7 +1719,7 @@ ${eap.txt}`;
         const ids = combos[0].map((d) => d.id);
         const por = r.certos.length ? `completa a cotação: falta ${fmt(alvo / 100)} = ${ids.join(" + ")} (mesmo fornecedor)`
           : `soma: ${ids.join(" + ")} = aprovado ${fmt(c.valor)} ao centavo · ${fk(combos[0][0].forn) === fk(combos[0][1].forn) ? "mesmo fornecedor" : "fornecedores diferentes no mesmo dia (vários vencedores)"}`;
-        for (const d of combos[0]) { pegos.add(d.id); docTaken.add(d.id); r.sugestoes.push({ doc: d, por, score: 44, soma: !!r.certos.length, parte: d.prim, grupo: ids }); }
+        for (const d of combos[0]) { pegos.add(d.id); docTaken.add(d.id); r.sugestoes.push({ doc: d, por, score: 44, soma: !!r.certos.length, parte: d.prim, grupo: ids, forte: true }); }
       }
     }
     // por nome: cotações sem nada que citam o fornecedor de um documento livre (ex.: contratos de pessoas na EQ INDIRETA)
@@ -1741,6 +1743,30 @@ ${eap.txt}`;
     }
     for (const lista of porNome.values()) if (lista.length > 1)
       for (const { c, sug } of lista) { sug.outras = lista.filter((o) => o.c !== c).map((o) => o.c.num); sug.por += ` · o mesmo nome está na cotação ${sug.outras.join(", ")}: decida uma a uma`; }
+    for (const lista of porNome.values()) if (lista.length === 1) lista[0].sug.forte = true;
+    // a cotação cita o nº do contrato/pedido (ex.: "ADITIVO CT165"): entra nele com o próprio valor
+    for (const c of cotList) {
+      const r = res.get(c.id); if (r.certos.length || r.sugestoes.length || !(c.valor > 0)) continue;
+      const alvo = citaDoc(c).map((id) => byId.get(id)).filter((d) => d && !isRej(d, c));
+      if (alvo.length === 1) r.sugestoes.push({ doc: alvo[0], por: `a cotação cita ${alvo[0].id}: aditivo/complemento dele`, score: 48, soma: true, parte: c.valor, forte: true });
+    }
+    // combinação única que fecha ao centavo (contrato + aditivo, pedidos que somam o aprovado, nome da pessoa
+    // na descrição): liga sozinho quando não há outra sugestão concorrendo na mesma cotação
+    for (const [cid, r] of res) {
+      const reais = r.sugestoes.filter((x) => !x.alt);
+      if (!reais.length || mexida.has(cid) || !reais.every((x) => x.forte)) continue;
+      for (const x of reais) {
+        r.certos.push({ doc: x.doc, por: x.por + " · combinação única, ligado automaticamente", auto: true, parte: x.soma ? x.parte : null });
+        docTaken.add(x.doc.id);
+      }
+      r.sugestoes = [];
+    }
+    // pedido de faturamento direto: sugere o contrato/pedido do mesmo fornecedor já ligado (abatimento, parte 0)
+    for (const d of todosDocs) {
+      if (!fatDir(d) || usedDoc.has(d.id)) continue;
+      for (const [cid, r] of res) if (r.certos.some((x) => !x.fd && fornKey(x.doc.forn) === fornKey(d.forn)) && !isRej(d, { id: cid }))
+        r.sugestoes.push({ doc: d, por: `pedido de faturamento direto do mesmo fornecedor (${r.certos.find((x) => fornKey(x.doc.forn) === fornKey(d.forn)).doc.id}): abate do contrato, não soma no aprovado`, score: 1, fd: true });
+    }
     return { res, docTaken };
   }
 
@@ -1866,9 +1892,9 @@ ${eap.txt}`;
     // o que já estava ligado sozinho nesta cotação vira confirmado, para não sumir quando ela ganha um vínculo seu
     for (const x of elosOf(cotId).certos) if (x.auto && x.doc.id !== docId && !e.links.some((l) => l.doc === x.doc.id && l.cot === cotId)) e.links.push({ doc: x.doc.id, cot: cotId, em: new Date().toISOString() });
     e.links = e.links.filter((l) => opt.keep ? !(l.doc === docId && l.cot === cotId) : l.doc !== docId); e.rej = e.rej.filter((l) => !(l.doc === docId && l.cot === cotId));
-    e.links.push({ doc: docId, cot: cotId, em: new Date().toISOString(), ...(opt.parte != null ? { parte: opt.parte } : {}) });
+    e.links.push({ doc: docId, cot: cotId, em: new Date().toISOString(), ...(opt.parte != null ? { parte: opt.parte } : {}), ...(opt.fd ? { fd: true } : {}) });
     // documento dividido: quem já estava nele sem parte passa a contar só o aprovado da sua cotação
-    if (opt.keep && opt.parte != null) for (const l of e.links) if (l.doc === docId && l.parte == null && S.cot.get(l.cot)?.valor > 0) l.parte = S.cot.get(l.cot).valor;
+    if (opt.keep && opt.parte != null && !opt.fd) for (const l of e.links) if (l.doc === docId && l.parte == null && S.cot.get(l.cot)?.valor > 0) l.parte = S.cot.get(l.cot).valor;
   }
   // Vincular à mão um documento que já está em outra cotação: ele fica nas duas, cada uma com o seu aprovado
   // (ex.: CT/142 = terraplanagem + aditivos)
@@ -1889,7 +1915,7 @@ ${eap.txt}`;
     const e = curElos();
     if (act === "ok") {
       const antes = { links: [...e.links], rej: [...e.rej] };
-      elosLink(e, doc, cot, b.dataset.keep ? { keep: true, parte: Number(b.dataset.parte) } : {}); await saveElos(e, msg, "");
+      elosLink(e, doc, cot, b.dataset.keep ? { keep: true, parte: Number(b.dataset.parte) } : b.dataset.fd ? { keep: true, parte: 0, fd: true } : {}); await saveElos(e, msg, "");
       const m2 = $("ped-msg"); m2.className = "msg"; S.undoOk = antes;
       m2.innerHTML = `${esc(doc)} vinculado à cotação ${esc(S.cot.get(cot)?.num ?? "")}. <button class="btn" type="button" data-el="undook">Desfazer</button>`;
       return;
@@ -1928,10 +1954,11 @@ ${eap.txt}`;
       if (!id || !elosAll().docs.some((d) => d.id === id)) { msg.className = "msg err"; msg.textContent = "Escolha um pedido ou contrato da lista (ex.: PC 1211 ou CT/150)."; return; }
       return saveElos(e, msg, linkKeep(e, id, cot));
     }
-    if (act === "doc2cot") {
+    if (act === "doc2cot" || act === "doc2cotfd") {
       const v = $("lk-cot-" + doc.replace(/\W/g, "_"))?.value || "";
       const hit = [...S.cot.entries()].find(([, c]) => key(c.num) === key(v));
       if (!hit) { msg.className = "msg err"; msg.textContent = `Não existe cotação nº ${v}.`; return; }
+      if (act === "doc2cotfd") { elosLink(e, doc, hit[0], { keep: true, parte: 0, fd: true }); return saveElos(e, msg, `${doc}: faturamento direto da cotação ${hit[1].num}.`); }
       return saveElos(e, msg, linkKeep(e, doc, hit[0]));
     }
     if (act === "just") {
@@ -2198,7 +2225,7 @@ ${eap.txt}`;
     if (S.rasF === "livres" && !q && K.P) {
       const L = K.P.livres.slice().sort((a, b) => parseDate(b.data) - parseDate(a.data));
       box.innerHTML = `<p class="hint">Pedidos e contratos do Sienge que não estão ligados a nenhuma cotação. Digite o nº da cotação para ligar, ou marque como lançado errado.</p>` +
-        tbl(["Pedido / contrato", "Valor", "Vincular à cotação nº"], L.map((d) => `<tr><td>${docLine(d)}</td><td class="r num">${fmt(d.prim)}</td><td><div class="row"><input id="lk-cot-${d.id.replace(/\W/g, "_")}" placeholder="Nº da cotação" style="width:8rem"><button class="btn" type="button" data-el="doc2cot" data-doc="${esc(d.id)}">Vincular</button>${errBtn(d)}</div></td></tr>`), "Todos os pedidos e contratos estão ligados a uma cotação.");
+        tbl(["Pedido / contrato", "Valor", "Vincular à cotação nº"], L.map((d) => `<tr><td>${docLine(d)}${fatDir(d) ? `<div class="hint"><b>Faturamento direto:</b> informe a cotação do contrato que ele abate e use o botão "Faturamento direto".</div>` : ""}</td><td class="r num">${fmt(d.prim)}</td><td><div class="row"><input id="lk-cot-${d.id.replace(/\W/g, "_")}" placeholder="Nº da cotação" style="width:8rem"><button class="btn" type="button" data-el="doc2cot" data-doc="${esc(d.id)}">Vincular</button><button class="btn" type="button" data-el="doc2cotfd" data-doc="${esc(d.id)}" title="Pedido de abatimento: liga sem somar no aprovado">Faturamento direto</button>${errBtn(d)}</div></td></tr>`), "Todos os pedidos e contratos estão ligados a uma cotação.");
       S.rasView = []; return;
     }
     if (S.rasF === "errados" && !q && K.P) {
@@ -2315,7 +2342,7 @@ ${eap.txt}`;
     const grupoHtml = gr ? `<div class="qc-warn" style="margin-bottom:8px">Compra em ${gr.length} pedidos: ${esc(gr.join(" + "))} = ${fmt(gr.reduce((t, id) => t + (r.s.find((x) => x.doc.id === id)?.doc.prim || 0), 0))}.` +
       `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="names" data-docs="${esc(gr.join(","))}" data-cot="${esc(r.c.id)}">Confirmar os ${gr.length}</button></div></div>` : "";
     return `${equipe}${aviso}${grupoHtml}${r.s.map((s, i) => `<div style="margin-bottom:6px">${docLine(s.doc)}<br><span class="hint">${esc(s.por)}</span> ` +
-          `<button class="btn${i ? "" : " primary"}" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}"${s.soma ? ` data-keep="1" data-parte="${s.parte}"` : ""}>Confirmar</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Não é este</button>${errBtn(s.doc, r.c.id)}</div>`).join("")}`;
+          `<button class="btn${i ? "" : " primary"}" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}"${s.soma ? ` data-keep="1" data-parte="${s.parte}"` : s.fd ? ` data-fd="1"` : ""}>${s.fd ? "Confirmar faturamento direto" : "Confirmar"}</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Não é este</button>${errBtn(s.doc, r.c.id)}</div>`).join("")}`;
   }
   const fornKey = (f) => [...toks(f)].sort().join(" ");
   const mesmaCompra = (a, b) => a.id !== b.id && Math.abs(a.prim - b.prim) < 0.005 && fornKey(a.forn) === fornKey(b.forn);
