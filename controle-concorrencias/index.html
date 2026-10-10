@@ -1747,7 +1747,7 @@ ${eap.txt}`;
       for (const c of cotList) {
         const r = res.get(c.id);
         if (isRej(d, c) || r.sugestoes.some((x) => !x.nome)) continue;
-        if (!re.test(fold(`${c.desc} ${c.obs || ""}`))) continue;
+        if (!re.test(fold(`${c.num} ${c.desc} ${c.obs || ""}`))) continue;
         const sug = { doc: d, por: `o nome do fornecedor (${nome[0]} ${nome[1]}) está na descrição da cotação`, score: 40, nome: true };
         r.sugestoes.push(sug);
         (porNome.get(d.id) || porNome.set(d.id, []).get(d.id)).push({ c, sug });
@@ -1760,7 +1760,11 @@ ${eap.txt}`;
     for (const c of cotList) {
       const r = res.get(c.id); if (r.certos.length || r.sugestoes.length || !(c.valor > 0)) continue;
       const alvo = citaDoc(c).map((id) => byId.get(id)).filter((d) => d && !isRej(d, c));
-      if (alvo.length === 1) r.sugestoes.push({ doc: alvo[0], por: `a cotação cita ${alvo[0].id}: aditivo/complemento dele`, score: 48, soma: true, parte: c.valor, forte: true });
+      if (alvo.length !== 1) continue;
+      // documento já usado por outra cotação: esta é um aditivo/complemento (entra com o próprio valor); senão, é o contrato dela
+      const ocupado = [...res.values()].some((o) => o !== r && o.certos.some((x) => x.doc.id === alvo[0].id));
+      r.sugestoes.push(ocupado ? { doc: alvo[0], por: `a cotação cita ${alvo[0].id}: aditivo/complemento dele`, score: 48, soma: true, parte: c.valor, forte: true }
+        : { doc: alvo[0], por: `a cotação cita ${alvo[0].id}`, score: 48, forte: true });
     }
     // combinação única que fecha ao centavo (contrato + aditivo, pedidos que somam o aprovado, nome da pessoa
     // na descrição): liga sozinho quando não há outra sugestão concorrendo na mesma cotação

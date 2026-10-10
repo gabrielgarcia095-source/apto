@@ -1,0 +1,83 @@
+{
+ "q0504": {
+  "atualizadoEm": "2026-10-07T17:25:28.862876Z",
+  "desc": "Assessoria de segurança do trabalho (Wagner da Silva Duarte)",
+  "formula": null,
+  "num": "ASSESS SST",
+  "obs": "Equipe própria - sem cotação",
+  "ordem": 504,
+  "valor": 103678.44
+ },
+ "q0508": {
+  "atualizadoEm": "2026-10-07T17:25:28.862876Z",
+  "desc": "Operador de mini grua (Tarsis de Azevedo dos Santos)",
+  "formula": null,
+  "num": "MINI GRUA",
+  "obs": "Equipe própria - sem cotação",
+  "ordem": 508,
+  "valor": 39796.21
+ },
+ "q0505": {
+  "atualizadoEm": "2026-10-07T17:25:28.862876Z",
+  "desc": "Mão de obra para superestrutura (Luciano Paura; Samuel dos Santos Silva; Jorge Augusto Ribeiro de Souza; Jose Carlos Gomes da Silva; Eduardo Martins Leite; Luiz Nailson Alves de Melo; Cicero Francisco de Lima; Ricardo Rodrigues Figueiredo; Jefferson Lima de Sousa)",
+  "formula": null,
+  "num": "MO SUPEREST",
+  "obs": "Equipe própria - sem cotação",
+  "ordem": 505,
+  "valor": 138352.19
+ },
+ "q0510": {
+  "atualizadoEm": "2026-10-07T17:25:28.862876Z",
+  "desc": "Mão de obra instalações hidrossanitárias, gás e incêndio (Roberto Luis Silva)",
+  "formula": null,
+  "num": "MO HIDRAUL",
+  "obs": "Equipe própria - sem cotação",
+  "ordem": 510,
+  "valor": 11904.03
+ },
+ "q0507": {
+  "atualizadoEm": "2026-10-07T17:25:28.862876Z",
+  "desc": "Operador de cremalheira (Adilson Valentim da Silva)",
+  "formula": null,
+  "num": "CREMALHEIRA",
+  "obs": "Equipe própria - sem cotação",
+  "ordem": 507,
+  "valor": 167737.4
+ },
+ "q0506": {
+  "atualizadoEm": "2026-10-07T17:25:28.862876Z",
+  "desc": "Mão de obra para alvenaria estrutural (Luciano Paura; Samuel dos Santos Silva; Jorge Augusto Ribeiro de Souza; Jose Carlos Gomes da Silva; Eduardo Martins Leite; Luiz Nailson Alves de Melo; Cicero Francisco de Lima; Ricardo Rodrigues Figueiredo; Jefferson Lima de Sousa)",
+  "formula": null,
+  "num": "MO ALVENARIA",
+  "obs": "Equipe própria - sem cotação",
+  "ordem": 506,
+  "valor": 138352.19
+ },
+ "q0509": {
+  "atualizadoEm": "2026-10-07T17:25:28.862876Z",
+  "desc": "Mão de obra instalações elétricas, telefonia e dados (Miguel de Jesus Barbosa; Jeneildo Bruno Lopes Rocha; Patrick Costa dos Santos; Almir Rogerio Melo de Castro; Erick Eduardo Francisco Leme)",
+  "formula": null,
+  "num": "MO ELETRICA",
+  "obs": "Equipe própria - sem cotação",
+  "ordem": 509,
+  "valor": 448977.22
+ },
+ "q0502": {
+  "atualizadoEm": "2026-10-07T17:25:28.862876Z",
+  "desc": "Equipe indireta (Paulo Roberto D'Mont Figueiredo; Edimar Gomes de Sousa; Gabriel Garcia; Renata Gonçalves Silva; Ana Carolina Soares; Eduardo Silva Vieira; Rogerio da Silva Baldin; Gabriel Paiva de Jesus; Vergilio Augusto de Melo Vinciguera; Jacqueline Aparecida Vieira)",
+  "formula": null,
+  "num": "EQ INDIRETA",
+  "obs": "Equipe própria - sem cotação",
+  "ordem": 502,
+  "valor": 1651213.96
+ },
+ "q0503": {
+  "atualizadoEm": "2026-10-07T17:25:28.862876Z",
+  "desc": "Equipe de apoio à construção (Roberto Miguel de Andrade; Ordener Roberto Primo Oliveira; Rodrigo Nardes Gomes; Adevalton de Carvalho da Costa; Leandro Santos Nascimento)",
+  "formula": null,
+  "num": "EQ APOIO",
+  "obs": "Equipe própria - sem cotação",
+  "ordem": 503,
+  "valor": 466399.38
+ }
+}
