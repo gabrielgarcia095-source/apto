@@ -172,6 +172,19 @@ dl.kv dd { margin: 0; }
 .ras-fora td { opacity: .6; }
 .ras-plan { margin: 8px 0 2px 6px; }
 .ras-row:hover td { background: rgba(127,127,127,.06); }
+.ras-tools { gap: 8px; margin-bottom: 10px; }
+#ras-top-msg .msg:empty { display: none; }
+#ras-top-msg .msg { text-align: left !important; margin-bottom: 8px; }
+.ras-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+.ras-pgrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+.ras-pgrid > .panel { margin: 0; }
+.ras-sec { border-top: 1px solid var(--line); padding: 10px 0 6px; display: grid; gap: 4px; }
+.ras-sec:first-child { border-top: 0; }
+.ras-sec > h3 { margin: 0 0 4px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.ras-sec > h3 .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--line); font-size: 12px; }
+.ras-tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; margin: 2px 4px 0 0; background: var(--warn-bg); }
+.ras-tag.bad { background: rgba(200,60,60,.14); }
+.ras-tag.ok { background: rgba(60,150,90,.14); }
 .hoje-g h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .hoje-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .hoje-card { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--line)); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
@@ -202,7 +215,7 @@ dl.kv dd { margin: 0; }
   <div class="notice" id="notice" hidden></div>
 
   <!-- Módulos: uma etapa do processo de compra em cada um -->
-  <nav class="mods" role="tablist" aria-label="Etapas">
+  <nav class="mods" role="tablist" aria-label="Etapas" hidden>
     <button class="mod" type="button" role="tab" data-mod="res" aria-selected="true"><span class="mod-n">R$</span><span class="mod-t"><b>Orçamento × Consumido</b><span class="mod-s" id="mod-s-res">Quanto volta ou falta no orçamento</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="ras" aria-selected="false"><span class="mod-n">⇢</span><span class="mod-t"><b>Rastreio</b><span class="mod-s">QC → pedido → notas → planilha</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="hoje" aria-selected="false"><span class="mod-n">✓</span><span class="mod-t"><b>O que fazer</b><span class="mod-s" id="mod-s-hoje">Pendências de todas as etapas</span></span></button>
@@ -211,16 +224,30 @@ dl.kv dd { margin: 0; }
     <button class="mod" type="button" role="tab" data-mod="nf" aria-selected="false"><span class="mod-n">3</span><span class="mod-t"><b>Pedido × Nota fiscal</b><span class="mod-s" id="mod-s-nf">Notas do Sienge</span></span></button>
   </nav>
 
-  <div id="mod-res" class="modbody">
+  <div id="mod-res" class="modbody" hidden>
     <div class="row modbar"><h2>Orçamento × Consumido</h2><span class="hint">Por cotação: o que você lançou na planilha de orçamento, o que comprou (pedido/contrato) e o que consumiu de fato (notas/entregue). Encerrada = todos os pedidos/contratos encerrados.</span></div>
     <section class="summary" id="res-summary" aria-label="Resumo"></section>
     <div class="row" style="gap:8px"><input id="res-q" type="search" placeholder="Buscar cotação, fornecedor, pedido…" style="flex:1;min-width:200px"><button class="btn" type="button" id="res-xlsx" hidden>Baixar esta lista (.xlsx)</button></div>
     <div id="res-list"></div>
   </div>
 
-  <div id="mod-ras" class="modbody" hidden>
-    <div class="row modbar"><h2>Rastreio</h2><span class="hint">Uma linha por cotação: o pedido/contrato que ela gerou, as notas desse pedido e o que está na planilha de orçamento.</span></div>
-    <div class="row" style="gap:8px"><input id="ras-q" type="search" placeholder="Nº da cotação, do pedido (781, CT/142), da nota (117773) ou fornecedor" style="flex:1;min-width:220px"><button class="btn" type="button" id="ras-xlsx" hidden>Baixar esta lista (.xlsx)</button></div>
+  <div id="mod-ras" class="modbody">
+    <div class="row ras-tools">
+      <button class="btn primary" type="button" data-rt="qc" aria-expanded="false">+ Lançar QC</button>
+      <button class="btn" type="button" data-rt="imp" aria-expanded="false">Importar arquivos</button>
+      <span id="ras-copia-slot"></span>
+      <button class="btn" type="button" data-rt="plan" aria-expanded="false">Planilha de orçamento ▾</button>
+    </div>
+    <section class="ras-panel" id="rt-qc" hidden><div class="ras-pgrid" id="rt-qc-in"></div></section>
+    <section class="ras-panel" id="rt-imp" hidden><div class="ras-pgrid" id="rt-imp-in"></div></section>
+    <section class="ras-panel" id="rt-plan" hidden>
+      <div class="row" id="rt-plan-btns"></div>
+      <h3 style="margin:14px 0 6px">Linhas da planilha sem cotação cadastrada</h3>
+      <div id="rt-plan-sem"></div>
+    </section>
+    <div id="ras-top-msg"></div>
+    <div class="chips" id="ras-chips" role="group" aria-label="Filtrar"></div>
+    <div class="row" style="gap:8px"><input id="ras-q" type="search" placeholder="Buscar: nº da cotação, do pedido (781, CT/142), da nota (117773) ou fornecedor" style="flex:1;min-width:220px"><button class="btn" type="button" id="ras-xlsx" hidden>Baixar esta lista (.xlsx)</button></div>
     <div id="ras-list"></div>
   </div>
 
@@ -402,6 +429,9 @@ dl.kv dd { margin: 0; }
     </div>
   </section>
   </div>
+
+  <div class="row hint old-mods" style="margin-top:28px;gap:6px">Telas antigas, por etapa:
+    <button class="btn" type="button" data-old="ras">Tela principal</button><button class="btn" type="button" data-old="res">Orçamento × Consumido</button><button class="btn" type="button" data-old="orc">1 · Cotação × Orçamento</button><button class="btn" type="button" data-old="ped">2 · Pedido / contrato</button><button class="btn" type="button" data-old="nf">3 · Nota fiscal</button></div>
 </div>
 
 <datalist id="eap-dl"></datalist>
@@ -691,7 +721,9 @@ dl.kv dd { margin: 0; }
   }
 
   function renderAll() {
-    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); renderPed(); renderNf(); renderHoje(); renderRes(); if (!$("mod-ras").hidden) renderRas(); updateCheck();
+    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); $("ped-info").innerHTML = relInfo();
+    if (!$("mod-ped").hidden) renderPed(); if (!$("mod-nf").hidden) renderNf(); if (!$("mod-hoje").hidden) renderHoje(); if (!$("mod-res").hidden) renderRes();
+    if (!$("mod-ras").hidden) renderRas(); updateCheck();
   }
 
   // ---------- formulário ----------
@@ -850,7 +882,9 @@ dl.kv dd { margin: 0; }
   function selectMod(m) {
     for (const b of document.querySelectorAll(".mod")) b.setAttribute("aria-selected", String(b.dataset.mod === m));
     for (const n of ["res", "ras", "hoje", "orc", "ped", "nf"]) $("mod-" + n).hidden = n !== m;
-    if (m === "ras") renderRas();
+    if (m === "ras") renderRas(); else $("ras-list").innerHTML = "";
+    if (m === "ped") renderPed();
+    if (m === "nf") renderNf();
     if (m === "hoje") renderHoje();
     if (m === "res") renderRes();
   }
@@ -1215,7 +1249,7 @@ dl.kv dd { margin: 0; }
     pointerDown = false;
     if (pendingSug != null) { const c = pendingSug; pendingSug = null; rerenderSugNow(c); }
   }, 0), true);
-  function rerenderSugNow(ctx) { if (isQ(ctx)) renderQueue(); else renderTable(); }
+  function rerenderSugNow(ctx) { if (isQ(ctx)) renderQueue(); else { renderTable(); if (!$("mod-ras").hidden) renderRas(); } }
   function rerenderSug(ctx) { if (pointerDown) pendingSug = ctx; else rerenderSugNow(ctx); }
 
   async function sugXlsx(lancs, numero, msgEl) {
@@ -2277,7 +2311,7 @@ ${eap.txt}`;
     return { lancamentos: out, confirmadoEm: null };
   }
   const estouro = (x) => x.docs.length ? Math.round(x.docs.reduce((t, d) => t + Math.max(0, d.uso * d.f - (d.parte ?? d.d.prim * d.f)), 0) * 100) / 100 : 0;
-  $("res-list").addEventListener("click", async (ev) => {
+  document.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-dv]"); if (!b || !S.db) return;
     const x = resRows().find((r) => r.c.id === b.dataset.dv); if (!x || !(x.ajuste > 0)) return;
     const valor = -x.ajuste;
@@ -2297,7 +2331,7 @@ ${eap.txt}`;
         obs: `Cotação ${x.c.num} encerrada: lançado ${fmt(x.c.lanc)}, consumido ${fmt(x.consumido)} (${docs}). Registrado pelo site em ${new Date().toLocaleDateString("pt-BR")}.` });
     } catch (err) { b.disabled = false; delete b.dataset.armed; b.textContent = "Tentar de novo"; if (msg) { msg.classList.add("neg"); msg.textContent = errText(err); } }
   });
-  $("res-list").addEventListener("click", async (ev) => {
+  document.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-ad]"); if (!b || !S.db) return;
     const x = resRows().find((r) => r.c.id === b.dataset.ad); if (!x) return;
     const valor = estouro(x); if (!(valor > 0)) return;
@@ -2360,7 +2394,7 @@ ${eap.txt}`;
       `${tot > Math.max(d.d.prim, ent) + 1 ? ` · <span class="neg">notas passam do ${d.d.tipo === "CT" ? "contrato" : "pedido"} em ${fmt(tot - Math.max(d.d.prim, ent))}</span>` : ""}</div>` +
       itensBox(d.d) +
       (ex ? `<details><summary class="hint">${ex[6].length} medições · liberado ${fmt(ex[10])}${ex[9] ? ` · caução ${fmt(ex[9])}` : ""}${ex[5] ? ` · aditivos: ${esc(ex[5])}` : ""}</summary>${ex[6].map((m) => `<div class="hint">Medição ${m[0]} · ${esc(m[1])} · <span class="num">${fmt(m[4])}</span></div>`).join("")}</details>` : "") +
-      notas + `</div>`;
+      (tits.length > 8 ? `<details><summary class="hint">ver as ${tits.length} notas</summary>${notas}</details>` : notas) + `</div>`;
   }
   function rasCard(x, aberto) {
     const sit = x.sit === "enc" ? `<span class="pill s-OK">encerrada</span>` : x.sit === "and" ? `<span class="pill s-AGUARDANDO">em andamento</span>` : `<span class="pill s-FALTA">sem pedido/contrato</span>`;
@@ -2389,28 +2423,139 @@ ${eap.txt}`;
     const soltos = q && temDocs() ? elosAll().docs.filter((d) => !usados.has(d.id) && hitDoc(d)) : [];
     return { rows, soltos };
   }
+  // ---------- Tela principal: uma linha por cotação, com o que falta em cada etapa ----------
+  //  1 orçamento (lançar o QC na planilha) · 2 pedido/contrato · 3 notas · resultado (devolver/acrescentar)
+  S.rasF = (() => { try { return localStorage.getItem("cc-rasf") || "pend"; } catch { return "pend"; } })();
+  function rasCats() {
+    const A = S.nfMeta && temDocs() ? nfAnalise() : null, linhaDe = new Map((A?.linhas || []).map((n) => [n.d.id, n]));
+    const P = temDocs() ? pedLists() : null, sug = new Map((P?.sug || []).map((r) => [r.c.id, r]));
+    const tol = (x) => Math.max(1, (x.c.lanc || 0) * 0.005);
+    const nfRuim = (x) => x.docs.some((d) => { const n = linhaDe.get(d.d.id); return n && (["falta", "acima", "semnota", "liberar"].includes(n.st) || n.novos?.length || n.finSug); });
+    const C = {
+      lancar: (x) => (x.c.valor > 0 && !(x.c.lanc > 0)) || !!x.dvPend?.length,
+      conf: (x) => sug.has(x.c.id),
+      sem: (x) => x.sit === "sem" && !x.j && !sug.has(x.c.id) && x.c.valor > 0,
+      notas: nfRuim,
+      dev: (x) => x.sit === "enc" && x.ajuste > tol(x),
+      add: (x) => x.sit === "enc" && x.ajuste < -tol(x) || estouro(x) > 0,
+      and: (x) => x.sit === "and",
+      ok: (x) => x.sit === "enc" && Math.abs(x.ajuste) <= tol(x),
+    };
+    return { C, linhaDe, P, sug };
+  }
+  const RAS_PEND = ["lancar", "conf", "sem", "notas", "dev", "add"];
+  function rasDetail(x, K) {
+    const cid = x.c.id, row = D.rows.find((r) => r.id === cid);
+    const sec = (n, t, body) => `<section class="ras-sec"><h3><span class="n">${n}</span>${t}</h3>${body}</section>`;
+    // 1 · orçamento
+    const s1 = (row ? detailHtml(row) : "") + (x.dvPend?.length ? `<div class="hint" style="color:var(--ok)">Devolução registrada (${x.dvPend.map((d) => esc(d.num) + " " + fmt(d.valor)).join(", ")}): falta lançar na planilha.</div>` : "") +
+      `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-rasedit="${esc(cid)}">Editar cotação</button></div>`;
+    // 2 · pedido / contrato
+    let s2 = "";
+    if (!temDocs()) s2 = `<div class="hint">Importe os relatórios do Sienge em "Importar arquivos".</div>`;
+    else {
+      const ligados = elosOf(cid).certos, sg = K.sug.get(cid);
+      s2 += ligados.map((e) => `<div>${docLine(e.doc)}${e.fd ? ` <span class="hint">· faturamento direto: abate do contrato</span>` : e.parte != null ? ` <span class="hint">· desta cotação: <b class="num">${fmt(e.parte)}</b>${partesTxt(e.doc)}</span>` : ""}` +
+        ` <span class="hint">· ${e.manual ? "confirmado por você" : "automático"}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(cid)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("");
+      if (sg) s2 += `<div class="hint" style="margin-top:4px"><b>Sugestão para confirmar:</b></div>` + sugInner(sg);
+      if (!ligados.length && !sg) s2 += x.j ? `<div>${esc(JUST[x.j.motivo] || x.j.motivo)}${x.j.obs ? ` · ${esc(x.j.obs)}` : ""} <button class="btn" type="button" data-el="unjust" data-cot="${esc(cid)}">Desfazer</button></div>`
+        : x.c.valor > 0 ? `<div class="hint">Nenhum pedido ou contrato ligado.</div>${finDica(x.c)}${justBtns(cid)}` : `<div class="hint">Devolução ao orçamento: não tem pedido.</div>`;
+      else if (x.nada) s2 += x.j ? `<div>${esc(JUST[x.j.motivo] || x.j.motivo)}${x.j.obs ? ` · ${esc(x.j.obs)}` : ""} <button class="btn" type="button" data-el="unjust" data-cot="${esc(cid)}">Desfazer</button></div>`
+        : `<div class="qc-warn" style="margin-top:4px">Pedido cancelado sem entrega. Se a compra foi refeita, vincule o novo pedido; se foi paga pelo financeiro, marque abaixo; se não houve compra, o valor volta ao orçamento.</div>${justBtns(cid, true)}`;
+      s2 += `<div class="row" style="margin-top:6px"><input list="doc-dl" id="lk-doc-${esc(cid)}" placeholder="${ligados.length ? "+ outro pedido/contrato" : "PC 1234 ou CT/150"}" style="width:14rem"><button class="btn" type="button" data-el="add" data-cot="${esc(cid)}">Vincular</button></div><div class="msg" id="el-msg-${esc(cid)}"></div>`;
+    }
+    // 3 · notas
+    const s3 = !x.docs.length ? `<div class="hint">Sem pedido/contrato, sem notas.</div>` : !S.nfMeta ? `<div class="hint">Importe o relatório "Títulos por Data" em "Importar arquivos".</div>`
+      : x.docs.map((d) => { const n = K.linhaDe.get(d.d.id); return rasDocHtml(d, x.c.num) + (n ? nfAcoes(n) : ""); }).join("");
+    // resultado
+    const tol = Math.max(1, (x.c.lanc || 0) * 0.005);
+    const res = x.sit === "enc" ? (Math.abs(x.ajuste) < tol ? `<b>Fechou certinho:</b> consumido igual ao lançado.` : x.ajuste > 0 ? `<b style="color:var(--ok)">Devolver ${fmt(x.ajuste)} ao orçamento.</b>` : `<b class="neg">Acrescentar ${fmt(-x.ajuste)} ao orçamento.</b>`)
+      : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? `<b class="neg">Já passou ${fmt(-x.aConsumir)} do pedido.</b>` : `Em andamento: falta consumir ${fmt(Math.max(0, x.aConsumir))} do pedido.`) : `Sem pedido/contrato.`;
+    const fs = filhosDe(x.c.num);
+    const s4 = `<div>Lançado ${fmt(x.c.lanc)} · comprado ${x.docs.length ? fmt(x.comprado) : "—"} · consumido ${x.docs.length ? fmt(x.consumido) : "—"} → ${res}</div>` +
+      (origemDe(x.c.num) ? `<div class="hint">${origemDe(x.c.num).tipo === "AD" ? "Aditivo" : "Devolução"} da cotação ${esc(origemDe(x.c.num).orig)}.</div>` : "") +
+      (fs.length ? `<div class="hint">${fs.map((f) => `${esc(f.num)} ${fmt(f.valor)}${f.lanc ? " (lançado)" : " (falta lançar)"}`).join(" · ")}</div>` : "") +
+      (!x.dvPend?.length && x.sit === "enc" && x.ajuste > tol ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-dv="${esc(cid)}">Registrar devolução ao orçamento (${fmt(x.ajuste)})</button><span class="hint">cria a cotação “DV ${esc(x.c.num)}” com valor negativo, nas mesmas linhas da EAP</span></div>` : "") +
+      (estouro(x) > 0 ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-ad="${esc(cid)}">Registrar estouro como aditivo (${fmt(estouro(x))})</button><span class="hint">cria a cotação “AD ${esc(x.c.num)}” para lançar na planilha</span></div>` : "");
+    return `<div class="ras-card">` + sec(1, "Orçamento (planilha)", s1) + sec(2, "Pedido / contrato", s2) + sec(3, "Notas fiscais", s3) + sec("=", "Resultado", s4) + `</div>`;
+  }
   function renderRas() {
     const box = $("ras-list"); if (!box || !S.loadedCot) return;
-    const { rows, soltos } = rasRows(); S.rasView = rows;
+    if (temDocs()) fillDocList();
+    const { rows: all, soltos } = rasRows(), K = rasCats();
+    const pend = (x) => RAS_PEND.some((k) => K.C[k](x));
+    const test = (k) => k === "todas" ? () => true : k === "pend" ? pend : K.C[k] || (() => true);
+    const base = resRows();
+    const soma = (k, f) => base.filter(test(k)).reduce((t, x) => t + (f(x) || 0), 0);
+    const tolA = (x) => Math.max(1, (x.c.lanc || 0) * 0.005);
+    const chips = [["pend", "Precisa de você"], ["lancar", "Falta lançar no orçamento"], ["conf", "Pedido a confirmar"], ["sem", "Sem pedido"], ["notas", "Notas a conferir"],
+      ["dev", "Devolver ao orçamento", soma("dev", (x) => x.ajuste)], ["add", "Acrescentar ao orçamento", soma("add", (x) => x.sit === "enc" && x.ajuste < -tolA(x) ? -x.ajuste : estouro(x))], ["and", "Em andamento"], ["ok", "Fechadas"], ["todas", "Todas"]];
+    if (K.P) chips.push(["livres", "Pedidos sem cotação"]);
+    const q = $("ras-q").value.trim();
+    $("ras-chips").innerHTML = chips.map(([k, l, v]) => `<button type="button" class="chip" data-rasf="${k}" aria-pressed="${!q && S.rasF === k}">${l} <span class="num">${k === "livres" ? K.P.livres.length : base.filter(test(k)).length}</span>${v ? ` <span class="num hint">${fmt(v)}</span>` : ""}</button>`).join("");
+    if (S.rasF === "livres" && !q && K.P) {
+      const L = K.P.livres.slice().sort((a, b) => parseDate(b.data) - parseDate(a.data));
+      box.innerHTML = `<p class="hint">Pedidos e contratos do Sienge que não estão ligados a nenhuma cotação. Digite o nº da cotação para ligar, ou marque como lançado errado.</p>` +
+        tbl(["Pedido / contrato", "Valor", "Vincular à cotação nº"], L.map((d) => `<tr><td>${docLine(d)}</td><td class="r num">${fmt(d.prim)}</td><td><div class="row"><input id="lk-cot-${d.id.replace(/\W/g, "_")}" placeholder="Nº da cotação" style="width:8rem"><button class="btn" type="button" data-el="doc2cot" data-doc="${esc(d.id)}">Vincular</button>${errBtn(d)}</div></td></tr>`), "Todos os pedidos e contratos estão ligados a uma cotação.");
+      S.rasView = []; return;
+    }
+    const rows = q ? all : all.filter(({ x }) => test(S.rasF)(x));
+    S.rasView = rows;
     const LIM = S.rasAll ? rows.length : 150;
-    const notasTxt = (ns) => !ns.length ? "—" : ns.length <= 3 ? ns.map((t) => esc(t.r[2].replace(/\s+/g, ""))).join(", ") : `${esc(ns[0].r[2].replace(/\s+/g, ""))} … ${esc(ns[ns.length - 1].r[2].replace(/\s+/g, ""))} <span class="hint">(${ns.length} notas)</span>`;
-    const res = (x) => x.sit === "enc" ? (Math.abs(x.ajuste) < Math.max(1, (x.c.lanc || 0) * 0.005) ? `<span class="pill s-OK">fechou</span>` : x.ajuste > 0 ? `<b style="color:var(--ok)">devolver ${fmt(x.ajuste)}</b>` : `<b class="neg">acrescentar ${fmt(-x.ajuste)}</b>`)
+    const res = (x) => x.sit === "enc" ? (Math.abs(x.ajuste) < tolA(x) ? `<span class="pill s-OK">fechou</span>` : x.ajuste > 0 ? `<b style="color:var(--ok)">devolver ${fmt(x.ajuste)}</b>` : `<b class="neg">acrescentar ${fmt(-x.ajuste)}</b>`)
       : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? `<b class="neg">passou ${fmt(-x.aConsumir)}</b>` : `<span class="hint">em aberto: falta ${fmt(Math.max(0, x.aConsumir))}</span>`) : `<span class="pill s-FALTA">${x.j ? "justificada" : "sem pedido"}</span>`;
-    // colunas pedidas: QC · descrição · aprovado no e-mail · orçamento · pedido/contrato · notas lançadas no pedido · resultado
+    const tags = (x) => [K.C.lancar(x) ? `<span class="ras-tag bad">falta lançar no orçamento</span>` : "", K.C.conf(x) ? `<span class="ras-tag">confirmar pedido</span>` : "",
+      K.C.notas(x) ? `<span class="ras-tag">notas a conferir</span>` : "", estouro(x) > 0 ? `<span class="ras-tag bad">estouro ${fmt(estouro(x))}</span>` : "",
+      origemDe(x.c.num) ? `<span class="ras-tag ok">${origemDe(x.c.num).tipo === "AD" ? "aditivo" : "devolução"} da ${esc(origemDe(x.c.num).orig)}</span>` : ""].join("");
     const orc = (x) => x.c.lanc ? `<span class="num">${fmt(x.c.lanc)}</span>${Math.abs(x.c.lanc - (x.c.valor || 0)) >= 1 ? `<div class="hint">≠ aprovado</div>` : ""}` : `<span class="neg">não lançado</span>`;
-    const ped = (x) => !x.docs.length ? `<span class="neg">sem pedido</span>` : x.docs.map((d) => `<div><b class="num">${esc(d.d.id)}</b> <span class="num">${fmt(d.d.prim)}</span>${d.parte != null && Math.abs(d.parte - d.d.prim) >= 1 ? `<span class="hint"> (desta cotação ${fmt(d.parte)})</span>` : ""}<div class="hint">${esc(d.d.forn)} · ${esc(d.d.sit)}</div></div>`).join("");
+    const ped = (x) => !x.docs.length ? (K.C.conf(x) ? `<span class="hint">sugestão: ${esc(K.sug.get(x.c.id).s.map((s) => s.doc.id).join(", "))}</span>` : `<span class="neg">sem pedido</span>`)
+      : x.docs.map((d) => `<div><b class="num">${esc(d.d.id)}</b> <span class="num">${fmt(d.d.prim)}</span>${d.parte != null && Math.abs(d.parte - d.d.prim) >= 1 ? `<span class="hint"> (desta cotação ${fmt(d.parte)})</span>` : ""}<div class="hint">${esc(d.d.forn)} · ${esc(d.d.sit)}</div></div>`).join("");
     const nfs = (x, notas) => !x.docs.length ? "—" : x.docs.map((d) => {
       const ns = notas.filter((n) => n.doc === d.d.id), tot = ns.reduce((t, n) => t + n.parte, 0), acima = tot > d.d.prim + Math.max(1, d.d.prim * 0.005);
       return `<div>${ns.length ? `<b>${ns.length} nota${ns.length > 1 ? "s" : ""}</b> · <span class="num${acima ? " neg" : ""}">${fmt(tot)}</span>${acima ? `<div class="hint neg">passou do pedido em ${fmt(tot - d.d.prim)}</div>` : ""}` : `<span class="hint">nenhuma nota</span>`}</div>`;
     }).join("");
     let h = tbl(["QC", "Descrição", "Aprovado", "Orçamento", "Pedido / contrato", "Notas no pedido", "Resultado"], rows.slice(0, LIM).map(({ x, notas }) => {
-      const linha = `<tr class="ras-row" data-rasopen="${esc(x.c.id)}" style="cursor:pointer"><td><b class="num">${esc(x.c.num)}</b></td><td>${esc(x.c.desc)}</td><td class="r num">${fmt(x.c.valor)}</td><td class="r">${orc(x)}</td>` +
+      const linha = `<tr class="ras-row" data-rasopen="${esc(x.c.id)}" style="cursor:pointer"><td><b class="num">${esc(x.c.num)}</b></td><td>${esc(x.c.desc)}<div>${tags(x)}</div></td><td class="r num">${fmt(x.c.valor)}</td><td class="r">${orc(x)}</td>` +
         `<td>${ped(x)}</td><td>${nfs(x, notas)}</td><td class="r">${res(x)}</td></tr>`;
-      return linha + (S.rasOpen === x.c.id ? `<tr class="detail"><td colspan="7">${rasCard(x, true)}</td></tr>` : "");
-    }), "Nada encontrado.");
+      return linha + (S.rasOpen === x.c.id ? `<tr class="detail"><td colspan="7">${rasDetail(x, K)}</td></tr>` : "");
+    }), q ? "Nada encontrado." : "Nada aqui. Escolha outro filtro.");
     if (rows.length > LIM) h += `<div class="row" style="margin-top:8px"><button class="btn" type="button" id="ras-all">Mostrar todas (${rows.length})</button></div>`;
-    if (soltos.length) h += `<h2 style="margin:14px 0 8px">Pedidos/contratos sem cotação</h2>` + soltos.slice(0, 20).map((d) => `<details class="ras-card"><summary><b>${esc(d.id)}</b> ${esc(d.forn)} · <span class="pill s-FALTA">sem cotação</span></summary>${rasDocHtml({ d, f: 1, parte: null }, "")}</details>`).join("");
-    box.innerHTML = `<div class="hint" style="margin-bottom:6px">${rows.length} cotação(ões). Clique na linha para ver o caminho completo.</div>` + h;
+    if (soltos.length) h += `<h2 style="margin:14px 0 8px">Pedidos/contratos sem cotação</h2>` + soltos.slice(0, 20).map((d) => `<details class="ras-card"><summary><b>${esc(d.id)}</b> ${esc(d.forn)} · <span class="pill s-FALTA">sem cotação</span></summary>${rasDocHtml({ d, f: 1, parte: null }, "")}` +
+      `<div class="row" style="margin-top:6px"><input id="lk-cot-${d.id.replace(/\W/g, "_")}" placeholder="Nº da cotação" style="width:8rem"><button class="btn" type="button" data-el="doc2cot" data-doc="${esc(d.id)}">Vincular</button>${errBtn(d)}</div></details>`).join("");
+    box.innerHTML = `<div class="hint" style="margin-bottom:6px">${q ? `Busca em todas as cotações: ` : ""}${rows.length} cotação(ões). Clique na linha para abrir as 3 etapas e agir.</div>` + h;
+  }
+  $("ras-chips").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-rasf]"); if (!b) return;
+    S.rasF = b.dataset.rasf; S.rasAll = false; $("ras-q").value = ""; try { localStorage.setItem("cc-rasf", S.rasF); } catch {} renderRas();
+  });
+  // painéis da barra: lançar QC, importar, planilha (os formulários de sempre, trazidos para cá)
+  {
+    const mv = (dest, ...els) => { for (const el of els) if (el) $(dest).append(el); };
+    mv("rt-qc-in", $("qc-panel"), $("form"));
+    $("rt-qc").prepend($("qc-result"));
+    mv("rt-imp-in", $("ped-file").closest(".panel"), $("i-file").closest(".panel"), $("conf-info").closest(".panel"));
+    const cp = $("btn-copia"); $("ras-copia-slot").replaceWith(cp);
+    mv("rt-plan-btns", $("btn-falta"), $("btn-idpc"), $("btn-export"));
+    $("ras-top-msg").append($("top-msg"), $("ped-msg"));
+    const vs = $("view-sem"); mv("rt-plan-sem", ...vs.children);
+    $("rt-imp-in").querySelector("#ped-file")?.closest(".panel")?.querySelector("h2")?.replaceChildren("Relatórios do Sienge");
+    const imp = $("i-file").closest(".panel").querySelector("h2"); if (imp) imp.textContent = "Planilha de orçamento";
+    const rtOpen = (k, open) => { const p = $("rt-" + k), b = document.querySelector(`[data-rt="${k}"]`); p.hidden = open == null ? !p.hidden : !open; b.setAttribute("aria-expanded", String(!p.hidden)); };
+    document.addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-rt]"); if (b) { rtOpen(b.dataset.rt); return; }
+      const e = ev.target.closest("[data-rasedit]");
+      if (e) { rtOpen("qc", true); editRow(e.dataset.rasedit); $("form").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+      const c = ev.target.closest("#rt-plan [data-cad]");
+      if (c) { setTimeout(() => { rtOpen("qc", true); $("form").scrollIntoView({ behavior: "smooth", block: "start" }); }, 0); return; }
+      const o = ev.target.closest("[data-old]"); if (o) { selectMod(o.dataset.old); window.scrollTo(0, 0); }
+    });
+    // desfazer vínculo de linha da planilha dentro da tela principal
+    document.addEventListener("click", async (ev) => {
+      const b = ev.target.closest("#ras-list [data-unlink]"); if (!b || !S.db) return;
+      ev.stopPropagation(); const next = { ...S.vinc }; delete next[b.dataset.unlink]; await saveVinc(next, null, "");
+    }, true);
+    // o QC lido abre o painel sozinho
+    new MutationObserver(() => { if (!$("qc-result").hidden) rtOpen("qc", true); }).observe($("qc-result"), { attributes: true, attributeFilter: ["hidden"] });
   }
   $("ras-list").addEventListener("click", (ev) => {
     if (ev.target.closest("#ras-all")) { S.rasAll = true; renderRas(); return; }
@@ -2528,24 +2673,7 @@ ${eap.txt}`;
       const descHtml = descart.length ? `<h2 style="margin:14px 0 8px">Descartados por você (${descart.length})</h2>` + tbl(["Cotação", "Aprovado", "Documento descartado", ""], descart.map((l) =>
         `<tr><td><b class="num">${esc(l.c.num)}</b> ${esc(l.c.desc)}</td><td class="r num">${fmt(l.c.valor)}</td><td>${l.d ? docLine(l.d) : esc(l.doc)}</td>` +
         `<td><button class="btn" type="button" data-el="unrej" data-doc="${esc(l.doc)}" data-cot="${esc(l.cot)}">Desfazer</button></td></tr>`), "") : "";
-      h += tbl(["Cotação", "Aprovado", "Sugestão de pedido/contrato", ""], rows.map((r) => {
-        const nomes = r.s.filter((x) => x.nome);
-        const livresNome = nomes.filter((x) => !x.outras);
-        const equipe = nomes.length >= 2 || (nomes.length && r.r.certos.length) ? `<div class="qc-warn" style="margin-bottom:8px"><b>Cotação de equipe:</b> cada pessoa citada na descrição tem o próprio contrato, então normalmente todos os contratos abaixo pertencem a esta cotação.` +
-          `<div>Contratos já ligados: ${r.r.certos.length} (${fmt(r.r.certos.reduce((t, e) => t + e.doc.prim, 0))}) · citados aqui: ${nomes.length} (${fmt(nomes.reduce((t, x) => t + x.doc.prim, 0))}) · aprovado: ${fmt(r.c.valor)}</div>` +
-          (livresNome.length ? `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="names" data-docs="${esc(livresNome.map((x) => x.doc.id).join(","))}" data-cot="${esc(r.c.id)}">Confirmar os ${livresNome.length} contratos citados</button>` +
-            `<span class="hint">${esc(livresNome.map((x) => x.doc.forn.replace(/^[\d.\s]+/, "")).join("; "))}</span></div>` : "") +
-          (nomes.length > livresNome.length ? `<div class="hint">Os que também estão em outra cotação ficam para você decidir um a um.</div>` : "") + `</div>` : "";
-        const par = r.s.length >= 2 && mesmaCompra(r.s[0].doc, r.s[1].doc) ? [r.s[0].doc, r.s[1].doc] : null;
-        const ativo = par && par.find((d) => d.sec > 0), parado = par && par.find((d) => !(d.sec > 0));
-        const aviso = par ? `<div class="qc-warn" style="margin-bottom:8px">Os dois são da mesma compra (mesmo fornecedor e valor).` +
-          (ativo && parado ? ` <b>${esc(ativo.id)}</b> tem ${ativo.tipo === "CT" ? "medição" : "entrega"} e <b>${esc(parado.id)}</b> está sem movimento: provavelmente foi substituído, confira se deve ser cancelado no Sienge.` : "") +
-          `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="both" data-doc="${esc(par[0].id)}" data-doc2="${esc(par[1].id)}" data-cot="${esc(r.c.id)}">Confirmar os dois</button></div></div>` : "";
-        const gr = r.s.find((x) => x.grupo?.length > 1)?.grupo;
-        const grupoHtml = gr ? `<div class="qc-warn" style="margin-bottom:8px">Compra em ${gr.length} pedidos: ${esc(gr.join(" + "))} = ${fmt(gr.reduce((t, id) => t + (r.s.find((x) => x.doc.id === id)?.doc.prim || 0), 0))}.` +
-          `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="names" data-docs="${esc(gr.join(","))}" data-cot="${esc(r.c.id)}">Confirmar os ${gr.length}</button></div></div>` : "";
-        return `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${equipe}${aviso}${grupoHtml}${r.s.map((s, i) => `<div style="margin-bottom:6px">${docLine(s.doc)}<br><span class="hint">${esc(s.por)}</span> ` +
-          `<button class="btn${i ? "" : " primary"}" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}"${s.soma ? ` data-keep="1" data-parte="${s.parte}"` : ""}>Confirmar</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Não é este</button>${errBtn(s.doc, r.c.id)}</div>`).join("")}<div class="msg" id="el-msg-${esc(r.c.id)}"></div></td><td></td></tr>`; }), "Nenhuma sugestão pendente.") + descHtml;
+      h += tbl(["Cotação", "Aprovado", "Sugestão de pedido/contrato", ""], rows.map((r) => `<tr><td><b class="num">${esc(r.c.num)}</b> ${esc(r.c.desc)}</td><td class="r num">${fmt(r.c.valor)}</td><td>${sugInner(r)}<div class="msg" id="el-msg-${esc(r.c.id)}"></div></td><td></td></tr>`), "Nenhuma sugestão pendente.") + descHtml;
     } else if (S.pedF === "sem") {
       const rows = L.sem.filter((r) => hitC(r.c));
       h = tbl(["Cotação", "Aprovado", "Observações", "Vincular ou justificar"], rows.map((r) =>
@@ -2590,6 +2718,26 @@ ${eap.txt}`;
     }
     box.innerHTML = h;
   }
+  // sugestões de pedido/contrato de uma cotação (botões Confirmar / Não é este)
+  function sugInner(r) {
+    const nomes = r.s.filter((x) => x.nome);
+    const livresNome = nomes.filter((x) => !x.outras);
+    const equipe = nomes.length >= 2 || (nomes.length && r.r.certos.length) ? `<div class="qc-warn" style="margin-bottom:8px"><b>Cotação de equipe:</b> cada pessoa citada na descrição tem o próprio contrato, então normalmente todos os contratos abaixo pertencem a esta cotação.` +
+      `<div>Contratos já ligados: ${r.r.certos.length} (${fmt(r.r.certos.reduce((t, e) => t + e.doc.prim, 0))}) · citados aqui: ${nomes.length} (${fmt(nomes.reduce((t, x) => t + x.doc.prim, 0))}) · aprovado: ${fmt(r.c.valor)}</div>` +
+      (livresNome.length ? `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="names" data-docs="${esc(livresNome.map((x) => x.doc.id).join(","))}" data-cot="${esc(r.c.id)}">Confirmar os ${livresNome.length} contratos citados</button>` +
+        `<span class="hint">${esc(livresNome.map((x) => x.doc.forn.replace(/^[\d.\s]+/, "")).join("; "))}</span></div>` : "") +
+      (nomes.length > livresNome.length ? `<div class="hint">Os que também estão em outra cotação ficam para você decidir um a um.</div>` : "") + `</div>` : "";
+    const par = r.s.length >= 2 && mesmaCompra(r.s[0].doc, r.s[1].doc) ? [r.s[0].doc, r.s[1].doc] : null;
+    const ativo = par && par.find((d) => d.sec > 0), parado = par && par.find((d) => !(d.sec > 0));
+    const aviso = par ? `<div class="qc-warn" style="margin-bottom:8px">Os dois são da mesma compra (mesmo fornecedor e valor).` +
+      (ativo && parado ? ` <b>${esc(ativo.id)}</b> tem ${ativo.tipo === "CT" ? "medição" : "entrega"} e <b>${esc(parado.id)}</b> está sem movimento: provavelmente foi substituído, confira se deve ser cancelado no Sienge.` : "") +
+      `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="both" data-doc="${esc(par[0].id)}" data-doc2="${esc(par[1].id)}" data-cot="${esc(r.c.id)}">Confirmar os dois</button></div></div>` : "";
+    const gr = r.s.find((x) => x.grupo?.length > 1)?.grupo;
+    const grupoHtml = gr ? `<div class="qc-warn" style="margin-bottom:8px">Compra em ${gr.length} pedidos: ${esc(gr.join(" + "))} = ${fmt(gr.reduce((t, id) => t + (r.s.find((x) => x.doc.id === id)?.doc.prim || 0), 0))}.` +
+      `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-el="names" data-docs="${esc(gr.join(","))}" data-cot="${esc(r.c.id)}">Confirmar os ${gr.length}</button></div></div>` : "";
+    return `${equipe}${aviso}${grupoHtml}${r.s.map((s, i) => `<div style="margin-bottom:6px">${docLine(s.doc)}<br><span class="hint">${esc(s.por)}</span> ` +
+          `<button class="btn${i ? "" : " primary"}" type="button" data-el="ok" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}"${s.soma ? ` data-keep="1" data-parte="${s.parte}"` : ""}>Confirmar</button> <button class="btn" type="button" data-el="no" data-doc="${esc(s.doc.id)}" data-cot="${esc(r.c.id)}">Não é este</button>${errBtn(s.doc, r.c.id)}</div>`).join("")}`;
+  }
   const fornKey = (f) => [...toks(f)].sort().join(" ");
   const mesmaCompra = (a, b) => a.id !== b.id && Math.abs(a.prim - b.prim) < 0.005 && fornKey(a.forn) === fornKey(b.forn);
   function justBtns(cid, soFin) {
@@ -2598,7 +2746,7 @@ ${eap.txt}`;
       (soFin ? "" : `<button class="btn" type="button" data-el="just" data-motivo="semPedido" data-cot="${esc(cid)}">Não gerou pedido</button>`) + `</div>`;
   }
   function tbl(head, rows, vazio) {
-    return `<div class="tablebox"><table><thead><tr>${head.map((x, i) => `<th${i === 1 && x !== "Valor" ? ' class="r"' : x === "Valor" || x === "Efetivo" || x.startsWith("Diferença") ? ' class="r"' : ""}>${x}</th>`).join("")}</tr></thead><tbody>` +
+    return `<div class="tablebox"><table><thead><tr>${head.map((x, i) => `<th${i === 1 && x !== "Valor" && x !== "Descrição" ? ' class="r"' : x === "Valor" || x === "Efetivo" || x.startsWith("Diferença") ? ' class="r"' : ""}>${x}</th>`).join("")}</tr></thead><tbody>` +
       (rows.length ? rows.slice(0, 300).join("") + (rows.length > 300 ? `<tr><td colspan="${head.length}" class="hint">Mostrando 300 de ${rows.length}. Use a busca.</td></tr>` : "") : `<tr><td colspan="${head.length}" class="empty">${vazio}</td></tr>`) + `</tbody></table></div>`;
   }
   // Lista do "Vincular": pedidos/contratos livres e os que ainda têm sobra sem cotação (ex.: CT/142 com aditivos)
@@ -2880,6 +3028,32 @@ ${eap.txt}`;
     return out;
   }
 
+  // avisos e botões de conferência das notas de um pedido/contrato (linha de nfAnalise)
+  function nfAcoes(x) {
+    return ((x.st === "acima" || x.st === "falta") && x.d.tipo === "PC" ? (() => {
+        // notas de outros fornecedores lançadas neste pedido (ex.: outra concreteira, transportadora, faturamento direto)
+        const nk = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" "), meu = nk(x.d.forn), por = new Map();
+        for (const t of x.tits) if (t.tipo !== "GUIA" && t.tipo !== "CAU") { const k = t.r[1].replace(/^\d+\s*-\s*/, ""); por.set(k, (por.get(k) || 0) + t.parte); }
+        const outros = [...por].filter(([k]) => nk(k) !== meu);
+        if (!outros.length) return "";
+        const proprio = [...por].filter(([k]) => nk(k) === meu).reduce((t, [, v]) => t + v, 0);
+        return `<div class="qc-warn" style="margin-top:4px">Notas de outros fornecedores lançadas neste pedido: ${outros.map(([k, v]) => `<b>${esc(k)}</b> ${fmt(v)}`).join(" · ")}. ` +
+          `Notas do próprio fornecedor: ${fmt(proprio)} (${proprio - x.ent >= 0 ? "+" : ""}${fmt(proprio - x.ent)} do entregue).</div>`;
+      })() : "") +
+      (x.st === "acima" ? (() => { const tp = {}; for (const t of x.tits) if (t.tipo !== "GUIA" && t.tipo !== "CAU") tp[t.tipo] = (tp[t.tipo] || 0) + t.parte; const ks = Object.keys(tp); return ks.length > 1 ? `<div class="hint">por tipo: ${ks.map((k) => `${esc(k)} ${fmt(tp[k])}`).join(" · ")}</div>` : ""; })() : "") +
+      (x.st === "okfrete" ? `<div class="hint">nota acima do entregue só pelo frete/outras despesas do pedido (${fmt(x.extra)})</div>` : "") +
+      (x.d.tipo === "CT" && x.d.ex ? `<div class="row" style="margin-top:4px"><label class="hint" style="display:flex;gap:6px;align-items:center">Situação <select data-sit="${esc(x.d.id)}" style="width:auto">${["", "Concluído", "Rescindido"].map((o) => `<option value="${o}"${(S.situacao || {})[x.d.id] === o || (!o && !(S.situacao || {})[x.d.id]) ? " selected" : ""}>${o || `automática (${esc(x.d.sit)})`}</option>`).join("")}</select></label></div>` : "") +
+      (x.novos?.length ? `<div class="qc-warn" style="margin-top:4px">Nota nova de outro fornecedor desde a sua conferência: ${x.novos.map((t) => `<b>${esc(t.r[1].replace(/^\d+\s*-\s*/, ""))}</b> ${esc(t.r[2])} ${esc(t.r[5])} ${fmt(t.parte)}`).join(" · ")}. É deste ${x.d.tipo === "CT" ? "contrato" : "pedido"}?</div>` : "") +
+      (x.exp ? `<div class="hint" style="color:var(--ok)">Conferido por você${x.exp.obs ? `: ${esc(x.exp.obs)}` : ""}</div>` : "") +
+      ((x.st === "acima" || x.st === "falta" || x.st === "liberar" || x.st === "semnota" || x.novos?.length) ? `<div class="row" style="margin-top:4px"><input id="exp-obs-${esc(x.d.id.replace(/\W/g, "_"))}" placeholder="Observação (ex.: Uvolt = instaladora)" value="${esc(x.exp?.obs || "")}" style="width:16rem">` +
+        (x.finSug ? `<button class="btn primary" type="button" data-exp="${esc(x.d.id)}" data-fin="${esc(x.fin.tits.map(titKey).join("||"))}">Sim, a nota do financeiro é deste</button>` : "") +
+        (x.st !== "liberar" && x.st !== "semnota" || x.novos?.length ? `<button class="btn" type="button" data-exp="${esc(x.d.id)}">${x.novos?.length ? "Sim, é deste" : "Divergência explicada"}</button>` : "") + `</div>` :
+        x.st === "okexp" ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-unexp="${esc(x.d.id)}">Desfazer conferência</button></div>` : "") +
+      (x.irmaos ? `<div class="hint">Nota lançada junto com ${esc(x.irmaos.join(", "))}: as diferenças se anulam</div>` : "") +
+      (x.fin && x.finSug ? `<div class="qc-warn" style="margin-top:4px">Possível nota lançada pelo financeiro sem o nº deste ${x.d.tipo === "CT" ? "contrato" : "pedido"}: ${x.fin.tits.map((r) => `<b>${esc(r[1].replace(/^\d+\s*-\s*/, ""))}</b> ${esc(r[2])} ${esc(r[5])} ${fmt(r[7])}`).join(" · ")}${x.fin.tits.length > 1 ? ` (total ${fmt(x.fin.total)})` : ""}. Ela não está no ${x.d.tipo === "CT" ? "contrato" : "pedido"} no Sienge: só conta se você confirmar.</div>` : "") +
+      (x.fin && !x.finSug ? `<div class="hint${x.st === "okfin" ? "" : " neg"}">${x.st === "okfin" ? (x.fin.outro ? `Fecha com a nota de ${esc(x.fin.tits[0][1].replace(/^\d+\s*-\s*/, ""))} (${esc(x.fin.tits[0][2])}, ${fmt(x.fin.total)}) lançada pelo financeiro: confira se é faturamento direto` : `Fecha com ${fmt(x.fin.total)} lançados pelo financeiro sem o nº do ${x.d.tipo === "CT" ? "contrato" : "pedido"}`) : `O mesmo fornecedor tem ${fmt(x.fin.total)} lançados pelo financeiro sem nº de pedido/contrato`}</div>` +
+        titsBox(x.fin.tits.map((r) => ({ r, parte: r[7], tipo: nfTipo(r[2]) })), "ver notas do financeiro") : "");
+  }
   function titLine(t) {
     const r = t.r;
     return `<div class="hint"><b class="num">${esc(r[2])}</b> · ${esc(r[5])} · ${esc(ORIG[r[3]] || r[3])} · ${esc(r[1].replace(/^\d+\s*-\s*/, ""))} · <span class="num">${fmt(r[7])}</span>` +
@@ -2925,31 +3099,9 @@ ${eap.txt}`;
       (x.guia || x.cau ? `<div class="hint">${x.guia ? `guias ${fmt(x.guia)}` : ""}${x.guia && x.cau ? " · " : ""}${x.cau ? `caução ${fmt(x.cau)}` : ""}</div>` : "") +
       titsBox(x.tits, `${x.tits.length} título(s)`) +
       (x.viaEx ? `<div class="hint">${fmt(x.viaEx)} em notas lançadas sem o nº do contrato, achadas pelo extrato</div>` : "") +
-      ((x.st === "acima" || x.st === "falta") && x.d.tipo === "PC" ? (() => {
-        // notas de outros fornecedores lançadas neste pedido (ex.: outra concreteira, transportadora, faturamento direto)
-        const nk = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" "), meu = nk(x.d.forn), por = new Map();
-        for (const t of x.tits) if (t.tipo !== "GUIA" && t.tipo !== "CAU") { const k = t.r[1].replace(/^\d+\s*-\s*/, ""); por.set(k, (por.get(k) || 0) + t.parte); }
-        const outros = [...por].filter(([k]) => nk(k) !== meu);
-        if (!outros.length) return "";
-        const proprio = [...por].filter(([k]) => nk(k) === meu).reduce((t, [, v]) => t + v, 0);
-        return `<div class="qc-warn" style="margin-top:4px">Notas de outros fornecedores lançadas neste pedido: ${outros.map(([k, v]) => `<b>${esc(k)}</b> ${fmt(v)}`).join(" · ")}. ` +
-          `Notas do próprio fornecedor: ${fmt(proprio)} (${proprio - x.ent >= 0 ? "+" : ""}${fmt(proprio - x.ent)} do entregue).</div>`;
-      })() : "") +
-      (x.st === "acima" ? (() => { const tp = {}; for (const t of x.tits) if (t.tipo !== "GUIA" && t.tipo !== "CAU") tp[t.tipo] = (tp[t.tipo] || 0) + t.parte; const ks = Object.keys(tp); return ks.length > 1 ? `<div class="hint">por tipo: ${ks.map((k) => `${esc(k)} ${fmt(tp[k])}`).join(" · ")}</div>` : ""; })() : "") +
-      (x.st === "okfrete" ? `<div class="hint">nota acima do entregue só pelo frete/outras despesas do pedido (${fmt(x.extra)})</div>` : "") +
-      (x.d.tipo === "CT" && x.d.ex ? `<div class="row" style="margin-top:4px"><label class="hint" style="display:flex;gap:6px;align-items:center">Situação <select data-sit="${esc(x.d.id)}" style="width:auto">${["", "Concluído", "Rescindido"].map((o) => `<option value="${o}"${(S.situacao || {})[x.d.id] === o || (!o && !(S.situacao || {})[x.d.id]) ? " selected" : ""}>${o || `automática (${esc(x.d.sit)})`}</option>`).join("")}</select></label></div>` : "") +
       (x.ex ? `<div class="hint">Extrato: ${x.ex[6].length} medições · medido ${fmt(x.ex[8])} · liberado ${fmt(x.ex[10])}${x.ex[9] ? ` · caução ${fmt(x.ex[9])}` : ""}${x.ex[5] ? ` · aditivos: ${esc(x.ex[5])}` : ""}</div>` +
         `<details><summary class="hint">ver medições</summary>${x.ex[6].map((m) => `<div class="hint">Medição ${m[0]} · ${esc(m[1])} · <span class="num">${fmt(m[4])}</span>${m[3] ? ` (reajuste ${fmt(m[3])})` : ""}${m[5] ? ` · caução ${fmt(m[5])}` : ""}</div>`).join("")}</details>` : "") +
-      (x.novos?.length ? `<div class="qc-warn" style="margin-top:4px">Nota nova de outro fornecedor desde a sua conferência: ${x.novos.map((t) => `<b>${esc(t.r[1].replace(/^\d+\s*-\s*/, ""))}</b> ${esc(t.r[2])} ${esc(t.r[5])} ${fmt(t.parte)}`).join(" · ")}. É deste ${x.d.tipo === "CT" ? "contrato" : "pedido"}?</div>` : "") +
-      (x.exp ? `<div class="hint" style="color:var(--ok)">Conferido por você${x.exp.obs ? `: ${esc(x.exp.obs)}` : ""}</div>` : "") +
-      ((x.st === "acima" || x.st === "falta" || x.st === "liberar" || x.st === "semnota" || x.novos?.length) ? `<div class="row" style="margin-top:4px"><input id="exp-obs-${esc(x.d.id.replace(/\W/g, "_"))}" placeholder="Observação (ex.: Uvolt = instaladora)" value="${esc(x.exp?.obs || "")}" style="width:16rem">` +
-        (x.finSug ? `<button class="btn primary" type="button" data-exp="${esc(x.d.id)}" data-fin="${esc(x.fin.tits.map(titKey).join("||"))}">Sim, a nota do financeiro é deste</button>` : "") +
-        (x.st !== "liberar" && x.st !== "semnota" || x.novos?.length ? `<button class="btn" type="button" data-exp="${esc(x.d.id)}">${x.novos?.length ? "Sim, é deste" : "Divergência explicada"}</button>` : "") + `</div>` :
-        x.st === "okexp" ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-unexp="${esc(x.d.id)}">Desfazer conferência</button></div>` : "") +
-      (x.irmaos ? `<div class="hint">Nota lançada junto com ${esc(x.irmaos.join(", "))}: as diferenças se anulam</div>` : "") +
-      (x.fin && x.finSug ? `<div class="qc-warn" style="margin-top:4px">Possível nota lançada pelo financeiro sem o nº deste ${x.d.tipo === "CT" ? "contrato" : "pedido"}: ${x.fin.tits.map((r) => `<b>${esc(r[1].replace(/^\d+\s*-\s*/, ""))}</b> ${esc(r[2])} ${esc(r[5])} ${fmt(r[7])}`).join(" · ")}${x.fin.tits.length > 1 ? ` (total ${fmt(x.fin.total)})` : ""}. Ela não está no ${x.d.tipo === "CT" ? "contrato" : "pedido"} no Sienge: só conta se você confirmar.</div>` : "") +
-      (x.fin && !x.finSug ? `<div class="hint${x.st === "okfin" ? "" : " neg"}">${x.st === "okfin" ? (x.fin.outro ? `Fecha com a nota de ${esc(x.fin.tits[0][1].replace(/^\d+\s*-\s*/, ""))} (${esc(x.fin.tits[0][2])}, ${fmt(x.fin.total)}) lançada pelo financeiro: confira se é faturamento direto` : `Fecha com ${fmt(x.fin.total)} lançados pelo financeiro sem o nº do ${x.d.tipo === "CT" ? "contrato" : "pedido"}`) : `O mesmo fornecedor tem ${fmt(x.fin.total)} lançados pelo financeiro sem nº de pedido/contrato`}</div>` +
-        titsBox(x.fin.tits.map((r) => ({ r, parte: r[7], tipo: nfTipo(r[2]) })), "ver notas do financeiro") : "") + `</td>`;
+      nfAcoes(x) + `</td>`;
     const lbl = (x) => x.d.tipo === "CT" ? "medido" : "entregue";
     let h = "";
     if (S.nfF === "div" || S.nfF === "semnota" || S.nfF === "ok") {
@@ -2982,7 +3134,7 @@ ${eap.txt}`;
   $("nf-summary").addEventListener("click", (ev) => { const b = ev.target.closest("[data-nf]"); if (!b) return; S.nfF = b.dataset.nf; try { localStorage.setItem("cc-nff", S.nfF); } catch {} renderNf(); });
   $("nf-q").addEventListener("input", () => renderNf());
   // conferência de divergência: guarda os títulos que você aceitou neste pedido/contrato
-  $("nf-list").addEventListener("click", async (ev) => {
+  document.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-exp],[data-unexp]"); if (!b || !S.db) return;
     const novo = { ...(S.explicados || {}) };
     if (b.dataset.unexp) delete novo[b.dataset.unexp];
@@ -2994,7 +3146,7 @@ ${eap.txt}`;
     try { await S.db.doc("config/explicados").set(novo); } catch (e) { b.textContent = errText(e); }
   });
   // situação do contrato marcada por você (o extrato não diz se foi concluído ou rescindido)
-  $("nf-list").addEventListener("change", async (ev) => {
+  document.addEventListener("change", async (ev) => {
     const sel = ev.target.closest("[data-sit]"); if (!sel || !S.db) return;
     const id = sel.dataset.sit, v = sel.value;
     try { await S.db.doc("config/situacao").set({ ...(S.situacao || {}), [id]: v || null }); }
