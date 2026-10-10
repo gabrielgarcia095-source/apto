@@ -173,6 +173,9 @@ dl.kv dd { margin: 0; }
 .ras-plan { margin: 8px 0 2px 6px; }
 .ras-row:hover td { background: rgba(127,127,127,.06); }
 .ras-tools { gap: 8px; margin-bottom: 10px; }
+.dropzone { position: relative; display: grid; gap: 4px; place-items: center; text-align: center; padding: 22px 12px; border: 2px dashed var(--line); border-radius: 10px; cursor: pointer; }
+.dropzone.over { border-color: var(--ink); background: rgba(127,127,127,.08); }
+.dropzone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
 #ras-top-msg .msg:empty { display: none; }
 #ras-top-msg .msg { text-align: left !important; margin-bottom: 8px; }
 .ras-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
@@ -267,11 +270,11 @@ dl.kv dd { margin: 0; }
         <li>Extrato do Fornecedor (Excel): contratos, medições e liberações</li>
         <li>Títulos por Data (Excel): as notas fiscais</li>
       </ul>
-      <label>Relatórios <input type="file" id="ped-file" accept=".pdf,.xlsx,.xls" multiple></label>
+      <div class="dropzone" id="ped-drop"><b>Arraste os 3 relatórios aqui</b><span class="hint">ou clique para escolher (pode selecionar os 3 juntos)</span><input type="file" id="ped-file" accept=".xlsx,.xls" multiple></div>
       <div class="msg" id="ped-imp-msg" role="status"></div>
-      <div class="row"><button class="btn primary" type="button" id="ped-go" disabled>Importar</button></div>
+      <div class="row"><button class="btn primary" type="button" id="ped-go" hidden disabled>Importar</button></div>
       <dl class="kv" id="ped-info"></dl>
-      <p class="hint" style="margin:0">A ligação é automática só quando o valor bate ao centavo com um único documento (e, para valores redondos, a data também confirma). O resto vira sugestão para você confirmar.</p>
+      <p class="hint" style="margin:0">A ligação cotação → pedido é automática quando só existe uma combinação possível (valor ao centavo, fornecedor/itens, soma de pedidos ou nº citado). O resto vira sugestão para você confirmar.</p>
     </div>
     <div class="panel">
       <h2>Planilha de orçamento</h2>
@@ -2324,8 +2327,7 @@ ${eap.txt}`;
   function relInfo() {
     const q = (m) => m ? `${new Date(m.importadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : `<span class="hint">não importado</span>`;
     const fora = (t) => t === "PC" ? novo(S.itMeta, S.docMeta.PC) : novo(S.exMeta, S.docMeta.CT);
-    return [["Saldos de pedidos", S.docMeta.PC, (m) => `${m.n} · ${fmt(m.soma)}${fora("PC") ? " · substituído pela Relação de Pedidos" : ""}`], ["Saldos de contratos", S.docMeta.CT, (m) => `${m.n} · ${fmt(m.soma)}${fora("CT") ? " · substituído pelo Extrato" : ""}`],
-      ["Relação de Pedidos", S.itMeta, (m) => `${m.n} pedidos`], ["Títulos (notas)", S.nfMeta, (m) => `${m.n} · ${fmt(m.soma)}`], ["Extrato do Fornecedor", S.exMeta, (m) => `${m.n} contratos`]]
+    return [["Relação de Pedidos", S.itMeta, (m) => `${m.n} pedidos`], ["Títulos (notas)", S.nfMeta, (m) => `${m.n} · ${fmt(m.soma)}`], ["Extrato do Fornecedor", S.exMeta, (m) => `${m.n} contratos`]]
       .map(([l, m, f]) => `<dt>${l}</dt><dd>${m ? `${f(m)} · ${q(m)}` : q(m)}</dd>`).join("");
   }
   // sugestões de pedido/contrato de uma cotação (botões Confirmar / Não é este)
@@ -2407,8 +2409,16 @@ ${eap.txt}`;
     await S.db.doc(t.meta).set({ arquivo: f.name, importadoEm: new Date().toISOString(), n: rows.length, partes: partes.length, ...extra });
     for (let i = partes.length; i < old; i++) await S.db.doc(`${t.coll}/parte-${i}`).delete();
   }
-  $("ped-file").addEventListener("change", async (ev) => {
-    const files = [...(ev.target.files || [])]; ev.target.value = "";
+  // arrastar os relatórios para o quadro (ou escolher): lê e importa sozinho quando todos foram reconhecidos
+  {
+    const dz = $("ped-drop");
+    for (const t of ["dragenter", "dragover"]) dz.addEventListener(t, (ev) => { ev.preventDefault(); dz.classList.add("over"); });
+    for (const t of ["dragleave", "drop"]) dz.addEventListener(t, () => dz.classList.remove("over"));
+    dz.addEventListener("drop", (ev) => { ev.preventDefault(); lerRelatorios([...(ev.dataTransfer?.files || [])]); });
+  }
+  $("ped-file").addEventListener("change", (ev) => { const fs = [...(ev.target.files || [])]; ev.target.value = ""; lerRelatorios(fs); });
+  async function lerRelatorios(files) {
+    if (!files.length) return;
     const m = $("ped-imp-msg"); m.className = "msg"; m.textContent = "Lendo…"; pedPend = [];
     for (const f of files) {
       try {
@@ -2423,8 +2433,10 @@ ${eap.txt}`;
       `<div><b>${p.tipo === "PC" ? "Saldos de pedidos" : "Saldos de contratos"}</b> (${esc(p.f.name)}): ${p.docs.length} encontrados, soma ${fmt(p.soma)}. ` +
       (p.total == null ? `<span class="hint">Total do relatório não encontrado.</span>` : Math.abs(p.total - p.soma) < 0.05 ? `<span style="color:var(--ok)">Confere com o total do relatório (${fmt(p.total)}).</span>` : `<span class="neg">Não confere com o total do relatório (${fmt(p.total)}): confira o arquivo.</span>`) +
       (p.erros.length ? ` <span class="neg">${p.erros.length} linha(s) não lida(s).</span>` : "") + `</div>`).join("");
-    $("ped-go").disabled = !pedPend.some((p) => p.docs?.length || p.rows?.length);
-  });
+    const ok = pedPend.some((p) => p.docs?.length || p.rows?.length);
+    $("ped-go").disabled = !ok; $("ped-go").hidden = !ok;
+    if (ok && !pedPend.some((p) => p.erro)) $("ped-go").click(); // tudo reconhecido: importa direto
+  }
   $("ped-go").addEventListener("click", async () => {
     const m = $("ped-imp-msg"), b = $("ped-go"); b.disabled = true;
     if (!S.db) { m.innerHTML += `<div class="neg">Banco de dados indisponível.</div>`; return; }
@@ -2439,7 +2451,7 @@ ${eap.txt}`;
       }
       for (const p of pedPend.filter((x) => x.kind && x.rows?.length)) await gravarPartes(XL_TIPOS[p.kind], p.f, p.rows, p.extra);
       m.innerHTML += `<div style="color:var(--ok)">Importado. Tudo foi recalculado; o que você já confirmou ou recusou foi mantido.</div>`;
-      pedPend = [];
+      pedPend = []; b.hidden = true;
     } catch (e) { m.innerHTML += `<div class="neg">${esc(e?.code ? errText(e) : (e?.message || String(e)))}</div>`; b.disabled = false; }
   });
 
