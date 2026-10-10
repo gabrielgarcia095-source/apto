@@ -2288,7 +2288,10 @@ ${eap.txt}`;
       ["dev", "Devolver ao orçamento", soma("dev", (x) => x.ajuste)], ["add", "Acrescentar ao orçamento", soma("add", (x) => x.sit === "enc" && x.ajuste < -tolA(x) ? -x.ajuste : estouro(x))], ["and", "Em andamento"], ["ok", "Fechadas"], ["aguarda", "Aguardando valor"], ["todas", "Todas"]];
     const A = S.nfMeta && temDocs() ? nfAnalise() : null;
     const descart = (S.elos?.rej || []).filter((l) => S.cot.get(l.cot));
-    const extra = { livres: K.P?.livres.length, errados: K.P?.errados.length, descart: descart.length, fin: A ? A.credores.length + A.fora.length : 0 };
+    // credores já ligados a uma cotação (folha, PJ sem contrato) saem de "Notas sem pedido"
+    const credLig = new Set(Object.values(S.finCot || {}).flatMap((v) => v.credores || []));
+    const credSem = A ? A.credores.filter((g) => !credLig.has(g.credor)) : [];
+    const extra = { livres: K.P?.livres.length, errados: K.P?.errados.length, descart: descart.length, fin: A ? credSem.length + A.fora.length : 0 };
     if (K.P) chips.push(["livres", "Pedidos sem cotação"]);
     if (extra.errados) chips.push(["errados", "A excluir no Sienge"]);
     if (extra.descart) chips.push(["descart", "Sugestões descartadas"]);
@@ -2317,7 +2320,7 @@ ${eap.txt}`;
     if (S.rasF === "fin" && !q && A) {
       const lista = (rs) => titsBox(rs.map((r) => ({ r, parte: r[7], tipo: nfTipo(r[2]) })), "ver notas");
       box.innerHTML = `<p class="hint">Notas sem nº de pedido/contrato (lançadas direto no financeiro, guias, folha etc.), por credor.</p>` +
-        tbl(["Credor", "Notas", "Total"], A.credores.map((g) => `<tr><td>${esc(g.credor.replace(/^\d+\s*-\s*/, ""))}${g.cobre ? `<div class="hint" style="color:var(--ok)">completa as notas do ${esc(g.cobre)}</div>` : ""}${lista(g.tits)}</td><td class="r num">${g.tits.length}</td><td class="r num">${fmt(g.total)}</td></tr>`), "Nenhuma.") +
+        tbl(["Credor", "Notas", "Total"], credSem.map((g) => `<tr><td>${esc(g.credor.replace(/^\d+\s*-\s*/, ""))}${g.cobre ? `<div class="hint" style="color:var(--ok)">completa as notas do ${esc(g.cobre)}</div>` : ""}${lista(g.tits)}</td><td class="r num">${g.tits.length}</td><td class="r num">${fmt(g.total)}</td></tr>`), "Nenhuma.") +
         (A.fora.length ? `<h3 style="margin:14px 0 6px">Notas que citam pedido/contrato fora dos relatórios importados</h3>` +
           tbl(["Pedido / contrato citado", "Notas", "Total"], A.fora.map((f) => `<tr><td><b class="num">${esc(f.id)}</b> · ${esc(f.tits[0][1].replace(/^\d+\s*-\s*/, ""))}${lista(f.tits)}</td><td class="r num">${f.tits.length}</td><td class="r num">${fmt(f.total)}</td></tr>`), "") : "");
       S.rasView = []; return;
