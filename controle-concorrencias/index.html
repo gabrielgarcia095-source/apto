@@ -2396,7 +2396,10 @@ ${eap.txt}`;
       const { rows, total } = parseTitulos(wb);
       const soma = Math.round(rows.reduce((t, r) => t + (r[7] || 0), 0) * 100) / 100;
       if (total != null && Math.abs(total - soma) > 0.05) return { erro: `a soma lida (${fmt(soma)}) não bate com o total do relatório (${fmt(total)})` };
-      return { kind: "titulos", rows, extra: { soma, total }, resumo: `${rows.length} títulos, ${fmt(soma)}${total != null ? " (confere com o total do relatório)" : ""}` };
+      // PPC/PCT = previsão do pedido/contrato inteiro (não é nota): fica de fora
+      const prev = rows.filter(ehPrevisao), reais = rows.filter((r) => !ehPrevisao(r));
+      const somaR = Math.round(reais.reduce((t, r) => t + (r[7] || 0), 0) * 100) / 100;
+      return { kind: "titulos", rows: reais, extra: { soma: somaR, total: somaR }, resumo: `${reais.length} títulos, ${fmt(somaR)}${total != null ? " (o relatório confere com o total)" : ""}${prev.length ? ` · ${prev.length} previsões de pedido/contrato (PPC/PCT, ${fmt(soma - somaR)}) ignoradas: não são notas` : ""}` };
     }
     return { erro: "não reconheci este relatório" };
   }
@@ -2511,7 +2514,8 @@ ${eap.txt}`;
     }
     return { rows, total };
   }
-  function nfRows() { const out = []; const n = S.nfMeta?.partes ?? 0; for (let i = 0; i < n; i++) out.push(...(S.nfParts.get(`parte-${i}`) || [])); return out; }
+  const ehPrevisao = (r) => /^(PPC|PCT)$/.test(nfTipo(r[2]));
+  function nfRows() { const out = []; const n = S.nfMeta?.partes ?? 0; for (let i = 0; i < n; i++) out.push(...(S.nfParts.get(`parte-${i}`) || [])); return out.filter((r) => !ehPrevisao(r)); }
   const nfTipo = (doc) => fold(String(doc).split("/")[0]).replace(/[^A-Z]/g, "");
   // pedido/contrato do título: coluna CT/OC (pode ter mais de um, um por linha); caução "CAU /165" é do CT/165
   function nfIds(r) {
