@@ -824,13 +824,14 @@ dl.kv dd { margin: 0; }
     const linhas = [], semSug = [], naoConf = new Set();
     for (const x of falta) {
       const ls = (x.qc?.lancamentos || []).filter((l) => leafOk(l.eap));
-      if (!ls.length) { semSug.push(x.num); continue; }
+      // sem item da EAP: vai do mesmo jeito, com a coluna D (ITEM) em branco para você escolher na planilha
+      if (!ls.length) { if (x.valor > 0) { semSug.push(x.num); linhas.push(sugTsv([{ item: "", descricao: String(x.desc || "").toUpperCase(), valor: x.valor }], x.num)); } continue; }
       if (!x.qc.confirmadoEm) naoConf.add(x.num);
       linhas.push(sugTsv(ls, x.num));
     }
     if (!falta.length) { m.textContent = "Nada para lançar: todas as cotações já estão na planilha de orçamento."; return; }
     const avisos = [];
-    if (semSug.length) avisos.push(`${semSug.length} cotação(ões) sem item da EAP ficaram de fora (${semSug.slice(0, 8).join(", ")}${semSug.length > 8 ? "…" : ""})`);
+    if (semSug.length) avisos.push(`${semSug.length} sem item da EAP foram com a coluna D em branco, escolha o item na planilha (${semSug.slice(0, 8).join(", ")}${semSug.length > 8 ? "…" : ""})`);
     if (naoConf.size) avisos.push(`${naoConf.size} com sugestão não confirmada (${[...naoConf].slice(0, 8).join(", ")}${naoConf.size > 8 ? "…" : ""})`);
     if (!linhas.length) { m.className = "msg err"; m.textContent = "Nenhuma cotação pendente tem item da EAP definido. " + avisos.join(". ") + "."; return; }
     const n = linhas.join("\n").split("\n").length;
