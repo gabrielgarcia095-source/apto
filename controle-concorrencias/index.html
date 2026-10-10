@@ -1043,7 +1043,7 @@ dl.kv dd { margin: 0; }
       const ls = (x.qc?.lancamentos || []).filter((l) => leafOk(l.eap));
       if (!ls.length) { semSug.push(x.num); continue; }
       if (!x.qc.confirmadoEm) naoConf.add(x.num);
-      linhas.push(sugTsv(ls, x.num, pcDe(x.id)));
+      linhas.push(sugTsv(ls, x.num));
     }
     if (!falta.length) { m.textContent = "Nada para lançar: todas as cotações já estão na planilha de orçamento."; return; }
     const avisos = [];
@@ -1052,7 +1052,7 @@ dl.kv dd { margin: 0; }
     if (!linhas.length) { m.className = "msg err"; m.textContent = "Nenhuma cotação pendente tem item da EAP definido. " + avisos.join(". ") + "."; return; }
     const n = linhas.join("\n").split("\n").length;
     copyText(linhas.join("\n"), m).then(() => {
-      if (!m.querySelector("textarea")) m.textContent = `${n} linha(s) copiada(s). Cole na coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre (vai de D a H; H = pedido/contrato).${avisos.length ? " Atenção: " + avisos.join("; ") + "." : ""}`;
+      if (!m.querySelector("textarea")) m.textContent = `${n} linha(s) copiada(s). Cole na coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre (vai de D a G).${avisos.length ? " Atenção: " + avisos.join("; ") + "." : ""}`;
     });
   });
 
@@ -1189,7 +1189,7 @@ dl.kv dd { margin: 0; }
   // Linhas no formato da aba LANÇAMENTOS (colunas D a G): ITEM, DESCRIÇÃO DA CONTRATAÇÃO, Nº COTAÇÃO, VALOR
   const plain = (v) => (Math.round(v * 100) / 100).toFixed(2).replace(".", ",");
   function sugTsv(lancs, numero, pc = "") {
-    return lancs.map((l) => [l.item, l.descricao, numero, plain(l.valor), pc].map((c) => String(c ?? "").replace(/[\t\n]/g, " ")).join("\t")).join("\n");
+    return lancs.map((l) => [l.item, l.descricao, numero, plain(l.valor), ...(pc ? [pc] : [])].map((c) => String(c ?? "").replace(/[\t\n]/g, " ")).join("\t")).join("\n");
   }
   // pedido/contrato da cotação para a coluna H da aba LANÇAMENTOS (aditivo/devolução usam os da cotação original)
   function pcDe(cid) {
@@ -1293,7 +1293,7 @@ dl.kv dd { margin: 0; }
     if (act === "copy" || act === "xlsx") {
       const src = sugSource(ctx) || [];
       if (src.some((l) => !leafOk(l.eap))) return bad();
-      if (act === "copy") copyText(sugTsv(src, numero, isQ(ctx) ? "" : pcDe(ctx)), msg); else sugXlsx(src, numero, msg);
+      if (act === "copy") copyText(sugTsv(src, numero), msg); else sugXlsx(src, numero, msg);
       return;
     }
     if (act === "undo") { delete S.sugDraft[ctx]; rerenderSug(ctx); return; }
