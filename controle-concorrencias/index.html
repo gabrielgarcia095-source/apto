@@ -2061,7 +2061,13 @@ ${eap.txt}`;
     // devolução ao orçamento: cotação "DV <nº>" de valor negativo; o lançado dela soma no da cotação original
     const dvBy = new Map();
     for (const c of D.rows) { const m = String(c.num).match(/^DV\s+(.+?)(\s+\(\d+\))?$/i); if (m && c.valor < 0) (dvBy.get(key(m[1])) || dvBy.set(key(m[1]), []).get(key(m[1]))).push(c); }
+    // pagamentos do financeiro (sem pedido) ligados à cotação pelo credor: folha, PJ sem contrato
+    // (previsões PRV/PPC/PCT, guias e caução ficam de fora)
+    const finCred = new Map();
+    if (S.nfMeta && S.finCot) for (const r of nfAnalise().semDoc) { if (/^(PRV|GUIA|CAU|PPC|PCT)$/.test(nfTipo(r[2]))) continue; (finCred.get(r[1]) || finCred.set(r[1], []).get(r[1])).push(r); }
     return D.rows.filter((c) => !(c.valor < 0)).map((c) => {
+      const fc = S.finCot?.[c.id], finTits = fc ? (fc.credores || []).flatMap((k) => finCred.get(k) || []).sort((a, b) => parseDate(a[5]) - parseDate(b[5])) : [];
+      const finTot = r2(finTits.reduce((t, r) => t + (r[7] || 0), 0));
       const certos = temDocs() ? elosOf(c.id).certos.filter((e) => !e.fd) : [];
       let comprado = 0, consumido = 0, notas = 0;
       const docs = certos.map((e) => {
@@ -2080,7 +2086,9 @@ ${eap.txt}`;
         return { d, f, parte: minha, nf, uso, enc: encerrado(d), porCred: [...porCred].sort((a, b) => b[1].v - a[1].v), it: itensOf(d) };
       });
       const j = justOf(c.id);
-      const sit = !docs.length ? "sem" : docs.every((x) => x.enc) ? "enc" : "and";
+      consumido += finTot; notas += finTot;
+      if (!docs.length && finTot > 0) comprado = c.valor || 0;   // sem pedido: o "comprado" é o aprovado
+      const sit = !docs.length ? (finTot > 0 ? "and" : "sem") : docs.every((x) => x.enc) ? "enc" : "and";
       comprado = r2(comprado); consumido = r2(consumido);
       // nº de cotação repetido: o lançado é do nº inteiro; cada cotação fica com a sua parte (pelo valor aprovado)
       const nk = D.keyCount.get(c.k) || 1, base = nk > 1 ? [...S.cot.values()].filter((o) => key(o.num) === c.k).reduce((t, o) => t + (o.valor || 0), 0) : 0;
@@ -2089,7 +2097,7 @@ ${eap.txt}`;
       const nada = sit === "enc" && docs.every((x) => /Cancel|Rescind/i.test(x.d.sit) && !(x.uso > 0));
       const ajuste = sit === "enc" ? r2(lanc - consumido) : null;      // + volta ao orçamento, − falta
       const aConsumir = sit === "and" ? r2(comprado - consumido) : null;   // negativo: já passou do pedido/contrato
-      return { c: { ...c, lanc }, dvPend: dvs.filter((d) => !d.lanc), docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
+      return { c: { ...c, lanc }, fin: finTits.length ? { tits: finTits, total: finTot, obs: fc.obs || "" } : null, dvPend: dvs.filter((d) => !d.lanc), docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
     });
   }
   // estouro = consumido acima do comprado (pedido/contrato). Registrar vira uma cotação "AD" ligada ao mesmo documento,
@@ -2244,16 +2252,21 @@ ${eap.txt}`;
       s2 += `<div class="row" style="margin-top:6px"><input list="doc-dl" id="lk-doc-${esc(cid)}" placeholder="${ligados.length ? "+ outro pedido/contrato" : "PC 1234 ou CT/150"}" style="width:14rem"><button class="btn" type="button" data-el="add" data-cot="${esc(cid)}">Vincular</button></div><div class="msg" id="el-msg-${esc(cid)}"></div>`;
     }
     // 3 · notas
-    const s3 = !x.docs.length ? `<div class="hint">Sem pedido/contrato, sem notas.</div>` : !S.nfMeta ? `<div class="hint">Importe o relatório "Títulos por Data" em "Importar arquivos".</div>`
-      : x.docs.map((d) => { const n = K.linhaDe.get(d.d.id); return rasDocHtml(d, x.c.num) + (n ? nfAcoes(n) : ""); }).join("");
+    const finHtml = x.fin ? `<div class="ras-doc"><div><b>Pagamentos no financeiro ligados a esta cotação</b> <span class="hint">pelo nome do credor${x.fin.obs ? ` · ${esc(x.fin.obs)}` : ""}</span></div>` +
+      (x.fin.tits.length > 8 ? `<details><summary class="hint">ver os ${x.fin.tits.length} lançamentos (total ${fmt(x.fin.total)})</summary>` : "") +
+      `<table class="ras-t"><thead><tr><th>Documento</th><th>Data</th><th>Credor</th><th class="r">Valor</th></tr></thead><tbody>` +
+      x.fin.tits.map((r) => `<tr><td class="num">${esc(r[2])}</td><td class="num">${esc(r[5])}</td><td>${esc(r[1].replace(/^\d+\s*-\s*/, ""))}</td><td class="r num">${fmt(r[7])}</td></tr>`).join("") +
+      `</tbody><tfoot><tr><td colspan="3"><b>${x.fin.tits.length} lançamentos</b>${/fopag|resc|f[eé]rias|sal[aá]rio/i.test(x.fin.tits.map((r) => r[2]).join(" ")) ? " · folha: valores líquidos, sem encargos (INSS/FGTS vão em guias)" : ""}</td><td class="r num"><b>${fmt(x.fin.total)}</b></td></tr></tfoot></table>${x.fin.tits.length > 8 ? "</details>" : ""}</div>` : "";
+    const s3 = finHtml + (!x.docs.length ? (x.fin ? "" : `<div class="hint">Sem pedido/contrato, sem notas.</div>`) : !S.nfMeta ? `<div class="hint">Importe o relatório "Títulos por Data" em "Importar arquivos".</div>`
+      : x.docs.map((d) => { const n = K.linhaDe.get(d.d.id); return rasDocHtml(d, x.c.num) + (n ? nfAcoes(n) : ""); }).join(""));
     // resultado
     const tol = Math.max(1, (x.c.lanc || 0) * 0.005);
     const res = x.sit === "enc" ? (Math.abs(x.ajuste) < tol ? `<b>Fechou certinho:</b> consumido igual ao lançado.` : x.ajuste > 0 ? `<b style="color:var(--ok)">Devolver ${fmt(x.ajuste)} ao orçamento.</b>` : `<b class="neg">Acrescentar ${fmt(-x.ajuste)} ao orçamento.</b>`)
-      : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? `<b class="neg">Já passou ${fmt(-x.aConsumir)} do pedido.</b>` : `Em andamento: falta consumir ${fmt(Math.max(0, x.aConsumir))} do pedido.`) : `Sem pedido/contrato.`;
+      : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? `<b class="neg">Já passou ${fmt(-x.aConsumir)} do pedido.</b>` : `Em andamento: falta consumir ${fmt(Math.max(0, x.aConsumir))} ${x.docs.length ? "do pedido" : "do aprovado"}.`) : `Sem pedido/contrato.`;
     const fs = filhosDe(x.c.num);
     const fimCls = x.sit === "enc" ? (Math.abs(x.ajuste) < tol ? "ok" : x.ajuste > 0 ? "dev" : "add") : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? "add" : "and") : "";
-    const s4 = `<div class="ras-res"><div><span class="k">Lançado no orçamento</span><span class="v">${fmt(x.c.lanc)}</span></div><div><span class="k">Comprado (pedido)</span><span class="v">${x.docs.length ? fmt(x.comprado) : "—"}</span></div>` +
-      `<div><span class="k">Consumido (notas/entregue)</span><span class="v">${x.docs.length ? fmt(x.consumido) : "—"}</span></div><div class="fim ${fimCls}"><span class="k">Resultado</span><span>${res}</span></div></div>` +
+    const s4 = `<div class="ras-res"><div><span class="k">Lançado no orçamento</span><span class="v">${fmt(x.c.lanc)}</span></div><div><span class="k">${x.docs.length ? "Comprado (pedido)" : "Aprovado"}</span><span class="v">${x.docs.length || x.fin ? fmt(x.comprado) : "—"}</span></div>` +
+      `<div><span class="k">${x.docs.length ? "Consumido (notas/entregue)" : "Pago (financeiro)"}</span><span class="v">${x.docs.length || x.fin ? fmt(x.consumido) : "—"}</span></div><div class="fim ${fimCls}"><span class="k">Resultado</span><span>${res}</span></div></div>` +
       (origemDe(x.c.num) ? `<div class="hint">${origemDe(x.c.num).tipo === "AD" ? "Aditivo" : "Devolução"} da cotação ${esc(origemDe(x.c.num).orig)}.</div>` : "") +
       (fs.length ? `<div class="hint">${fs.map((f) => `${esc(f.num)} ${fmt(f.valor)}${f.lanc ? " (lançado)" : " (falta lançar)"}`).join(" · ")}</div>` : "") +
       (!x.dvPend?.length && x.sit === "enc" && x.ajuste > tol ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-dv="${esc(cid)}">Registrar devolução ao orçamento (${fmt(x.ajuste)})</button><span class="hint">cria a cotação “DV ${esc(x.c.num)}” com valor negativo, nas mesmas linhas da EAP</span></div>` : "") +
@@ -2319,12 +2332,12 @@ ${eap.txt}`;
       K.C.notas(x) ? `<span class="ras-tag">notas a conferir</span>` : K.liberar(x) ? `<span class="ras-tag ok">medição a liberar</span>` : "", estouro(x) > 0 ? (cabeOrc(x) ? `<span class="ras-tag">passou do pedido ${fmt(estouro(x))} (cabe no orçamento)</span>` : `<span class="ras-tag bad">estouro ${fmt(estouro(x))}</span>`) : "",
       origemDe(x.c.num) ? `<span class="ras-tag ok">${origemDe(x.c.num).tipo === "AD" ? "aditivo" : "devolução"} da ${esc(origemDe(x.c.num).orig)}</span>` : ""].join("");
     const orc = (x) => x.c.lanc ? `<span class="num">${fmt(x.c.lanc)}</span>${Math.abs(x.c.lanc - (x.c.valor || 0)) >= 1 ? `<div class="hint">≠ aprovado</div>` : ""}` : `<span class="neg">não lançado</span>`;
-    const ped = (x) => !x.docs.length ? (K.C.conf(x) ? `<span class="hint">sugestão: ${esc(K.sug.get(x.c.id).s.map((s) => s.doc.id).join(", "))}</span>` : x.c.valor > 0 ? `<span class="neg">sem pedido</span>` : "—")
+    const ped = (x) => !x.docs.length && x.fin ? `<span class="hint">sem pedido · pago pelo financeiro</span>` : !x.docs.length ? (K.C.conf(x) ? `<span class="hint">sugestão: ${esc(K.sug.get(x.c.id).s.map((s) => s.doc.id).join(", "))}</span>` : x.c.valor > 0 ? `<span class="neg">sem pedido</span>` : "—")
       : x.docs.map((d) => `<div><b class="num">${esc(d.d.id)}</b> <span class="num">${fmt(d.d.prim)}</span>${d.parte != null && Math.abs(d.parte - d.d.prim) >= 1 ? `<span class="hint"> (desta cotação ${fmt(d.parte)})</span>` : ""}<div class="hint">${esc(d.d.forn)} · ${esc(d.d.sit)}</div></div>`).join("");
-    const nfs = (x, notas) => !x.docs.length ? "—" : x.docs.map((d) => {
+    const nfs = (x, notas) => (x.fin ? `<div><b>${x.fin.tits.length} pagto${x.fin.tits.length > 1 ? "s" : ""}</b> · <span class="num">${fmt(x.fin.total)}</span><div class="hint">no financeiro</div></div>` : "") + (!x.docs.length ? (x.fin ? "" : "—") : x.docs.map((d) => {
       const ns = notas.filter((n) => n.doc === d.d.id), tot = ns.reduce((t, n) => t + n.parte, 0), acima = tot > d.d.prim + Math.max(1, d.d.prim * 0.005);
       return `<div>${ns.length ? `<b>${ns.length} nota${ns.length > 1 ? "s" : ""}</b> · <span class="num${acima ? " neg" : ""}">${fmt(tot)}</span>${acima ? `<div class="hint neg">passou do pedido em ${fmt(tot - d.d.prim)}</div>` : ""}` : `<span class="hint">nenhuma nota</span>`}</div>`;
-    }).join("");
+    }).join(""));
     let h = tbl(["QC", "Descrição", "Aprovado", "Orçamento", "Pedido / contrato", "Notas no pedido", "Resultado"], rows.slice(0, LIM).map(({ x, notas }) => {
       const linha = `<tr class="ras-row${S.rasOpen === x.c.id ? " aberta" : ""}" data-rasopen="${esc(x.c.id)}" style="cursor:pointer"><td><b class="num">${esc(x.c.num)}</b></td><td>${esc(x.c.desc)}<div>${tags(x)}</div></td><td class="r num">${x.c.valor == null ? "—" : fmt(x.c.valor)}</td><td class="r">${x.c.valor > 0 || x.c.lanc ? orc(x) : "—"}</td>` +
         `<td>${ped(x)}</td><td>${nfs(x, notas)}</td><td class="r">${res(x)}</td></tr>`;
@@ -2802,6 +2815,7 @@ ${eap.txt}`;
     db.doc("config/extrato").onSnapshot((d) => { S.exMeta = d.exists ? d.data() : null; S.exVer++; S.docVer++; renderAll(); });
     db.doc("config/explicados").onSnapshot((d) => { S.explicados = d.exists ? d.data() : {}; renderAll(); });
     db.doc("config/situacao").onSnapshot((d) => { S.situacao = d.exists ? d.data() : {}; S.docVer++; renderAll(); });
+    db.doc("config/fincot").onSnapshot((d) => { S.finCot = d.exists ? (d.data().map || {}) : null; renderAll(); });
     db.collection("extrato").limit(100).onSnapshot((snap) => { S.exParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.exVer++; S.docVer++; renderAll(); });
     db.doc("config/nf").onSnapshot((d) => { S.nfMeta = d.exists ? d.data() : null; S.nfVer++; renderAll(); });
     db.collection("nf").limit(100).onSnapshot((snap) => { S.nfParts = new Map(snap.docs.map((d) => [d.id, d.data().rows || []])); S.nfVer++; renderAll(); });
