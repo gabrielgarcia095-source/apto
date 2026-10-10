@@ -2075,6 +2075,8 @@ ${eap.txt}`;
     });
     return { lancamentos: out, confirmadoEm: null };
   }
+  // passou do pedido, mas o consumido ainda cabe no que foi lançado no orçamento: não precisa de aditivo
+  const cabeOrc = (x) => (x.c.lanc || 0) > 0 && x.consumido <= (x.c.lanc || 0) + 0.009;
   const estouro = (x) => x.docs.length ? Math.round(x.docs.reduce((t, d) => t + Math.max(0, d.uso * d.f - (d.parte ?? d.d.prim * d.f)), 0) * 100) / 100 : 0;
   document.addEventListener("click", async (ev) => {
     const b = ev.target.closest("[data-dv]"); if (!b || !S.db) return;
@@ -2181,7 +2183,7 @@ ${eap.txt}`;
       sem: (x) => x.sit === "sem" && !x.j && !sug.has(x.c.id) && x.c.valor > 0,
       notas: nfRuim,
       dev: (x) => x.sit === "enc" && x.ajuste > tol(x),
-      add: (x) => x.sit === "enc" && x.ajuste < -tol(x) || estouro(x) > 0,
+      add: (x) => x.sit === "enc" && x.ajuste < -tol(x) || (estouro(x) > 0 && !cabeOrc(x)),
       and: (x) => x.sit === "and",
       ok: (x) => x.sit === "enc" && Math.abs(x.ajuste) <= tol(x),
       aguarda: (x) => x.c.valor == null,
@@ -2221,7 +2223,8 @@ ${eap.txt}`;
       (origemDe(x.c.num) ? `<div class="hint">${origemDe(x.c.num).tipo === "AD" ? "Aditivo" : "Devolução"} da cotação ${esc(origemDe(x.c.num).orig)}.</div>` : "") +
       (fs.length ? `<div class="hint">${fs.map((f) => `${esc(f.num)} ${fmt(f.valor)}${f.lanc ? " (lançado)" : " (falta lançar)"}`).join(" · ")}</div>` : "") +
       (!x.dvPend?.length && x.sit === "enc" && x.ajuste > tol ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-dv="${esc(cid)}">Registrar devolução ao orçamento (${fmt(x.ajuste)})</button><span class="hint">cria a cotação “DV ${esc(x.c.num)}” com valor negativo, nas mesmas linhas da EAP</span></div>` : "") +
-      (estouro(x) > 0 ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-ad="${esc(cid)}">Registrar estouro como aditivo (${fmt(estouro(x))})</button><span class="hint">cria a cotação “AD ${esc(x.c.num)}” para lançar na planilha</span></div>` : "");
+      (estouro(x) > 0 && cabeOrc(x) ? `<div class="hint">As notas passaram do pedido em ${fmt(estouro(x))}, mas o gasto ainda cabe no que foi lançado no orçamento: não precisa de aditivo.</div>` : "") +
+      (estouro(x) > 0 && !cabeOrc(x) ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-ad="${esc(cid)}">Registrar estouro como aditivo (${fmt(estouro(x))})</button><span class="hint">cria a cotação “AD ${esc(x.c.num)}” para lançar na planilha</span></div>` : "");
     return `<div class="ras-card">` + sec(1, "Orçamento (planilha)", s1) + sec(2, "Pedido / contrato", s2) + sec(3, "Notas fiscais", s3) + sec("=", "Resultado", s4) + `</div>`;
   }
   function renderRas() {
@@ -2278,7 +2281,7 @@ ${eap.txt}`;
       : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? `<b class="neg">passou ${fmt(-x.aConsumir)}</b>` : `<span class="hint">em aberto: falta ${fmt(Math.max(0, x.aConsumir))}</span>`)
       : x.c.valor == null ? `<span class="pill s-AGUARDANDO">aguardando valor</span>` : !(x.c.valor > 0) ? `<span class="hint">não utilizada</span>` : `<span class="pill s-FALTA">${x.j ? "justificada" : "sem pedido"}</span>`;
     const tags = (x) => [K.C.lancar(x) ? `<span class="ras-tag bad">falta lançar no orçamento</span>` : "", K.C.conf(x) ? `<span class="ras-tag">confirmar pedido</span>` : "",
-      K.C.notas(x) ? `<span class="ras-tag">notas a conferir</span>` : K.liberar(x) ? `<span class="ras-tag ok">medição a liberar</span>` : "", estouro(x) > 0 ? `<span class="ras-tag bad">estouro ${fmt(estouro(x))}</span>` : "",
+      K.C.notas(x) ? `<span class="ras-tag">notas a conferir</span>` : K.liberar(x) ? `<span class="ras-tag ok">medição a liberar</span>` : "", estouro(x) > 0 ? (cabeOrc(x) ? `<span class="ras-tag">passou do pedido ${fmt(estouro(x))} (cabe no orçamento)</span>` : `<span class="ras-tag bad">estouro ${fmt(estouro(x))}</span>`) : "",
       origemDe(x.c.num) ? `<span class="ras-tag ok">${origemDe(x.c.num).tipo === "AD" ? "aditivo" : "devolução"} da ${esc(origemDe(x.c.num).orig)}</span>` : ""].join("");
     const orc = (x) => x.c.lanc ? `<span class="num">${fmt(x.c.lanc)}</span>${Math.abs(x.c.lanc - (x.c.valor || 0)) >= 1 ? `<div class="hint">≠ aprovado</div>` : ""}` : `<span class="neg">não lançado</span>`;
     const ped = (x) => !x.docs.length ? (K.C.conf(x) ? `<span class="hint">sugestão: ${esc(K.sug.get(x.c.id).s.map((s) => s.doc.id).join(", "))}</span>` : x.c.valor > 0 ? `<span class="neg">sem pedido</span>` : "—")
