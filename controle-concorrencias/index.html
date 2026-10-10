@@ -18,6 +18,11 @@
   --wait: #7d6a2e;     --wait-bg: #f3edd6;
   --none: #6b7178;     --none-bg: #eaecec;
   --row-hover: #f7f8f6;
+  /* cor de cada etapa da linha aberta: 1 orçamento · 2 pedido · 3 notas · resultado */
+  --s1: #3b5bab; --s1-bg: #e8edf8;
+  --s2: #1b7468; --s2-bg: #e1f1ee;
+  --s3: #874a9b; --s3-bg: #f3e8f6;
+  --s4: #4a5560; --s4-bg: #eceff1;
   --font-ui: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
@@ -27,6 +32,7 @@
   --ok: #6cc893; --ok-bg: #19382a; --bad: #f08a82; --bad-bg: #42201d;
   --warn: #f0a55a; --warn-bg: #43301b; --wait: #d6c27e; --wait-bg: #383220;
   --none: #a3a9ae; --none-bg: #2a3034; --row-hover: #22282c; color-scheme: dark;
+  --s1: #93abec; --s1-bg: #1f2842; --s2: #62c6b6; --s2-bg: #15322e; --s3: #d39ee4; --s3-bg: #33223c; --s4: #b8c1c9; --s4-bg: #262c31;
 } }
 :root[data-theme="dark"] {
   --bg: #15191c; --panel: #1d2226; --ink: #e6e9ea; --muted: #9aa4ab; --line: #2f363b;
@@ -34,6 +40,7 @@
   --ok: #6cc893; --ok-bg: #19382a; --bad: #f08a82; --bad-bg: #42201d;
   --warn: #f0a55a; --warn-bg: #43301b; --wait: #d6c27e; --wait-bg: #383220;
   --none: #a3a9ae; --none-bg: #2a3034; --row-hover: #22282c; color-scheme: dark;
+  --s1: #93abec; --s1-bg: #1f2842; --s2: #62c6b6; --s2-bg: #15322e; --s3: #d39ee4; --s3-bg: #33223c; --s4: #b8c1c9; --s4-bg: #262c31;
 }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.45; }
@@ -164,9 +171,12 @@ dl.kv dd { margin: 0; }
 .hoje { display: grid; gap: 22px; }
 .ras-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin: 6px 0; }
 .ras-card > summary { cursor: pointer; }
-.ras-doc { border-left: 3px solid var(--line); margin: 10px 0 10px 6px; padding: 2px 0 2px 12px; display: grid; gap: 4px; }
+.ras-doc { border: 1px solid var(--line); border-radius: 6px; background: var(--bg); padding: 8px 10px; display: grid; gap: 6px; min-width: 0; overflow-x: auto; }
 .ras-t { width: 100%; border-collapse: collapse; font-size: 13px; }
-.ras-t th, .ras-t td { padding: 3px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.ras-t th, .ras-t td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.ras-t thead th { background: var(--s3-bg); color: var(--s3); }
+.ras-t tbody tr:nth-child(even) td { background: var(--panel); }
+.ras-t tfoot td { font-weight: 600; }
 .ras-t th.r, .ras-t td.r { text-align: right; }
 .ras-t tfoot td { border-bottom: 0; }
 .ras-fora td { opacity: .6; }
@@ -181,10 +191,32 @@ dl.kv dd { margin: 0; }
 .ras-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
 .ras-pgrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
 .ras-pgrid > .panel { margin: 0; }
-.ras-sec { border-top: 1px solid var(--line); padding: 10px 0 6px; display: grid; gap: 4px; }
-.ras-sec:first-child { border-top: 0; }
-.ras-sec > h3 { margin: 0 0 4px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
-.ras-sec > h3 .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--line); font-size: 12px; }
+/* linha aberta: cada etapa é um bloco com a sua cor */
+.ras-open { display: grid; gap: 12px; }
+.ras-sec { --c: var(--s4); --cb: var(--s4-bg); background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--c); border-radius: 8px; overflow: hidden; min-width: 0; }
+.ras-sec.st1 { --c: var(--s1); --cb: var(--s1-bg); }
+.ras-sec.st2 { --c: var(--s2); --cb: var(--s2-bg); }
+.ras-sec.st3 { --c: var(--s3); --cb: var(--s3-bg); }
+.ras-sec > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 4px 10px; padding: 8px 14px; background: var(--cb); border-bottom: 1px solid var(--line); }
+.ras-sec > header .n { align-self: center; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--c); color: var(--panel); font-size: 12px; font-weight: 800; }
+.ras-sec > header b { font-size: .92rem; color: var(--c); text-transform: uppercase; letter-spacing: .06em; }
+.ras-sec > header .sub { color: var(--muted); font-size: .82rem; }
+.ras-sec > .body { padding: 10px 14px 12px; display: grid; gap: 8px; min-width: 0; }
+.ras-sec .body table { min-width: 0; }
+.ras-sec .body th { background: transparent; position: static; }
+.ras-link .btn { padding: 3px 10px; font-size: .8rem; margin-left: 6px; }
+.ras-link { display: block; line-height: 1.7; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.ras-res { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.ras-res > div { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; display: grid; gap: 2px; background: var(--bg); align-content: start; }
+.ras-res .k { font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+.ras-res .v { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 1.02rem; }
+.ras-res .fim.dev, .ras-res .fim.ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.ras-res .fim.add { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
+.ras-res .fim.and { background: var(--wait-bg); border-color: var(--wait); color: var(--wait); }
+.ras-res .fim .k, .ras-res .fim b { color: inherit; }
+tr.ras-row.aberta td { background: var(--accent-soft); }
+tr.ras-row.aberta td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
+tr.detail > td { background: var(--bg); padding: 12px 14px 16px; box-shadow: inset 4px 0 0 var(--accent); }
 .ras-tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; margin: 2px 4px 0 0; background: var(--warn-bg); }
 .ras-tag.bad { background: rgba(200,60,60,.14); }
 .ras-tag.ok { background: rgba(60,150,90,.14); }
@@ -2193,7 +2225,7 @@ ${eap.txt}`;
   const RAS_PEND = ["lancar", "conf", "sem", "notas", "dev", "add"];
   function rasDetail(x, K) {
     const cid = x.c.id, row = D.rows.find((r) => r.id === cid);
-    const sec = (n, t, body) => `<section class="ras-sec"><h3><span class="n">${n}</span>${t}</h3>${body}</section>`;
+    const sec = (n, cls, t, sub, body) => `<section class="ras-sec ${cls}"><header><span class="n">${n}</span><b>${t}</b><span class="sub">${sub}</span></header><div class="body">${body}</div></section>`;
     // 1 · orçamento
     const s1 = (row ? detailHtml(row) : "") + (x.dvPend?.length ? `<div class="hint" style="color:var(--ok)">Devolução registrada (${x.dvPend.map((d) => esc(d.num) + " " + fmt(d.valor)).join(", ")}): falta lançar na planilha.</div>` : "") +
       `<div class="row" style="margin-top:6px"><button class="btn" type="button" data-rasedit="${esc(cid)}">Editar cotação</button></div>`;
@@ -2202,7 +2234,7 @@ ${eap.txt}`;
     if (!temDocs()) s2 = `<div class="hint">Importe os relatórios do Sienge em "Importar arquivos".</div>`;
     else {
       const ligados = elosOf(cid).certos, sg = K.sug.get(cid);
-      s2 += ligados.map((e) => `<div>${docLine(e.doc)}${e.fd ? ` <span class="hint">· faturamento direto: abate do contrato</span>` : e.parte != null ? ` <span class="hint">· desta cotação: <b class="num">${fmt(e.parte)}</b>${partesTxt(e.doc)}</span>` : ""}` +
+      s2 += ligados.map((e) => `<div class="ras-link">${docLine(e.doc)}${e.fd ? ` <span class="hint">· faturamento direto: abate do contrato</span>` : e.parte != null ? ` <span class="hint">· desta cotação: <b class="num">${fmt(e.parte)}</b>${partesTxt(e.doc)}</span>` : ""}` +
         ` <span class="hint">· ${e.manual ? "confirmado por você" : "automático"}</span> <button class="btn" type="button" data-el="unlink" data-doc="${esc(e.doc.id)}" data-cot="${esc(cid)}" data-manual="${e.manual ? 1 : ""}">Desvincular</button></div>`).join("");
       if (sg) s2 += `<div class="hint" style="margin-top:4px"><b>Sugestão para confirmar:</b></div>` + sugInner(sg);
       if (!ligados.length && !sg) s2 += x.j ? `<div>${esc(JUST[x.j.motivo] || x.j.motivo)}${x.j.obs ? ` · ${esc(x.j.obs)}` : ""} <button class="btn" type="button" data-el="unjust" data-cot="${esc(cid)}">Desfazer</button></div>`
@@ -2219,13 +2251,16 @@ ${eap.txt}`;
     const res = x.sit === "enc" ? (Math.abs(x.ajuste) < tol ? `<b>Fechou certinho:</b> consumido igual ao lançado.` : x.ajuste > 0 ? `<b style="color:var(--ok)">Devolver ${fmt(x.ajuste)} ao orçamento.</b>` : `<b class="neg">Acrescentar ${fmt(-x.ajuste)} ao orçamento.</b>`)
       : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? `<b class="neg">Já passou ${fmt(-x.aConsumir)} do pedido.</b>` : `Em andamento: falta consumir ${fmt(Math.max(0, x.aConsumir))} do pedido.`) : `Sem pedido/contrato.`;
     const fs = filhosDe(x.c.num);
-    const s4 = `<div>Lançado ${fmt(x.c.lanc)} · comprado ${x.docs.length ? fmt(x.comprado) : "—"} · consumido ${x.docs.length ? fmt(x.consumido) : "—"} → ${res}</div>` +
+    const fimCls = x.sit === "enc" ? (Math.abs(x.ajuste) < tol ? "ok" : x.ajuste > 0 ? "dev" : "add") : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? "add" : "and") : "";
+    const s4 = `<div class="ras-res"><div><span class="k">Lançado no orçamento</span><span class="v">${fmt(x.c.lanc)}</span></div><div><span class="k">Comprado (pedido)</span><span class="v">${x.docs.length ? fmt(x.comprado) : "—"}</span></div>` +
+      `<div><span class="k">Consumido (notas/entregue)</span><span class="v">${x.docs.length ? fmt(x.consumido) : "—"}</span></div><div class="fim ${fimCls}"><span class="k">Resultado</span><span>${res}</span></div></div>` +
       (origemDe(x.c.num) ? `<div class="hint">${origemDe(x.c.num).tipo === "AD" ? "Aditivo" : "Devolução"} da cotação ${esc(origemDe(x.c.num).orig)}.</div>` : "") +
       (fs.length ? `<div class="hint">${fs.map((f) => `${esc(f.num)} ${fmt(f.valor)}${f.lanc ? " (lançado)" : " (falta lançar)"}`).join(" · ")}</div>` : "") +
       (!x.dvPend?.length && x.sit === "enc" && x.ajuste > tol ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-dv="${esc(cid)}">Registrar devolução ao orçamento (${fmt(x.ajuste)})</button><span class="hint">cria a cotação “DV ${esc(x.c.num)}” com valor negativo, nas mesmas linhas da EAP</span></div>` : "") +
       (estouro(x) > 0 && cabeOrc(x) ? `<div class="hint">As notas passaram do pedido em ${fmt(estouro(x))}, mas o gasto ainda cabe no que foi lançado no orçamento: não precisa de aditivo.</div>` : "") +
       (estouro(x) > 0 && !cabeOrc(x) ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-ad="${esc(cid)}">Registrar estouro como aditivo (${fmt(estouro(x))})</button><span class="hint">cria a cotação “AD ${esc(x.c.num)}” para lançar na planilha</span></div>` : "");
-    return `<div class="ras-card">` + sec(1, "Orçamento (planilha)", s1) + sec(2, "Pedido / contrato", s2) + sec(3, "Notas fiscais", s3) + sec("=", "Resultado", s4) + `</div>`;
+    return `<div class="ras-open">` + sec(1, "st1", "Orçamento", "o que está na planilha", s1) + sec(2, "st2", "Pedido / contrato", "o que foi comprado no Sienge", s2) +
+      sec(3, "st3", "Notas fiscais", "o que foi faturado", s3) + sec("=", "st4", "Resultado", "orçamento × gasto", s4) + `</div>`;
   }
   function renderRas() {
     const box = $("ras-list"); if (!box || !S.loadedCot) return;
@@ -2291,7 +2326,7 @@ ${eap.txt}`;
       return `<div>${ns.length ? `<b>${ns.length} nota${ns.length > 1 ? "s" : ""}</b> · <span class="num${acima ? " neg" : ""}">${fmt(tot)}</span>${acima ? `<div class="hint neg">passou do pedido em ${fmt(tot - d.d.prim)}</div>` : ""}` : `<span class="hint">nenhuma nota</span>`}</div>`;
     }).join("");
     let h = tbl(["QC", "Descrição", "Aprovado", "Orçamento", "Pedido / contrato", "Notas no pedido", "Resultado"], rows.slice(0, LIM).map(({ x, notas }) => {
-      const linha = `<tr class="ras-row" data-rasopen="${esc(x.c.id)}" style="cursor:pointer"><td><b class="num">${esc(x.c.num)}</b></td><td>${esc(x.c.desc)}<div>${tags(x)}</div></td><td class="r num">${x.c.valor == null ? "—" : fmt(x.c.valor)}</td><td class="r">${x.c.valor > 0 || x.c.lanc ? orc(x) : "—"}</td>` +
+      const linha = `<tr class="ras-row${S.rasOpen === x.c.id ? " aberta" : ""}" data-rasopen="${esc(x.c.id)}" style="cursor:pointer"><td><b class="num">${esc(x.c.num)}</b></td><td>${esc(x.c.desc)}<div>${tags(x)}</div></td><td class="r num">${x.c.valor == null ? "—" : fmt(x.c.valor)}</td><td class="r">${x.c.valor > 0 || x.c.lanc ? orc(x) : "—"}</td>` +
         `<td>${ped(x)}</td><td>${nfs(x, notas)}</td><td class="r">${res(x)}</td></tr>`;
       return linha + (S.rasOpen === x.c.id ? `<tr class="detail"><td colspan="7">${rasDetail(x, K)}</td></tr>` : "");
     }), q ? "Nada encontrado." : "Nada aqui. Escolha outro filtro.", Infinity);
