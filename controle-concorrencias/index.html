@@ -2552,7 +2552,13 @@ ${eap.txt}`;
     const byId = new Map(docs.map((d) => [d.id, d]));
     const por = new Map(), semDoc = [], fora = new Map();
     const get = (id) => por.get(id) || por.set(id, { nf: 0, guia: 0, cau: 0, tits: [] }).get(id);
-    const rows = nfRows();
+    const rows = nfRows(), multi = [];
+    const poe = (id, { r, parte, t, viaEx, junto }) => {
+      const x = get(id);
+      if (t === "GUIA") x.guia += parte; else if (t === "CAU") x.cau += parte; else x.nf += parte;
+      x.tits.push({ r, parte, tipo: t, junto, viaEx });
+      if (viaEx) x.viaEx = (x.viaEx || 0) + parte;
+    };
     const nk = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" ");
     for (const r of rows) {
       let ids = nfIds(r), viaEx = false; const t = nfTipo(r[2]), v = r[7] || 0;
@@ -2566,14 +2572,17 @@ ${eap.txt}`;
       const ok = ids.filter((id) => byId.has(id));
       for (const id of ids) if (!byId.has(id)) (fora.get(id) || fora.set(id, []).get(id)).push(r);
       if (!ok.length) continue;
-      // nota de mais de um pedido: dividida pelo entregue/medido de cada um
+      if (ok.length > 1 && t !== "GUIA" && t !== "CAU") { multi.push({ r, ok, t, v, viaEx }); continue; }
       const pesos = ok.map((id) => Math.max(0.01, byId.get(id).sec || byId.get(id).prim || 0)), tp = pesos.reduce((a, b) => a + b, 0);
-      ok.forEach((id, i) => {
-        const x = get(id), parte = Math.round(v * pesos[i] / tp * 100) / 100;
-        if (t === "GUIA") x.guia += parte; else if (t === "CAU") x.cau += parte; else x.nf += parte;
-        x.tits.push({ r, parte, tipo: t, junto: ok.length > 1 ? ok.filter((o) => o !== id) : null, viaEx });
-        if (viaEx) x.viaEx = (x.viaEx || 0) + parte;
-      });
+      ok.forEach((id, i) => poe(id, { r, parte: Math.round(v * pesos[i] / tp * 100) / 100, t, viaEx, junto: ok.length > 1 ? ok.filter((o) => o !== id) : null }));
+    }
+    // nota de mais de um pedido: primeiro completa o que falta de nota em cada pedido (entregue − notas próprias);
+    // só a sobra é dividida pelo entregue. Assim a diferença fica num pedido só, e não espalhada entre os dois.
+    for (const m of multi) {
+      const falta = m.ok.map((id) => { const d = byId.get(id); return Math.max(0, (d.sec || d.prim || 0) - (por.get(id)?.nf || 0)); });
+      let resto = m.v; const partes = falta.map((f) => { const p = Math.min(f, Math.max(0, resto)); resto -= p; return p; });
+      if (resto > 0.004) { const pesos = m.ok.map((id) => Math.max(0.01, byId.get(id).sec || byId.get(id).prim || 0)), tp = pesos.reduce((a, b) => a + b, 0); m.ok.forEach((id, i) => { partes[i] += resto * pesos[i] / tp; }); }
+      m.ok.forEach((id, i) => poe(id, { r: m.r, parte: Math.round(partes[i] * 100) / 100, t: m.t, viaEx: m.viaEx, junto: m.ok.filter((o) => o !== id) }));
     }
     const r2 = (v) => Math.round(v * 100) / 100;
     const linhas = docs.map((d) => {
@@ -2592,6 +2601,10 @@ ${eap.txt}`;
       }
       return { d, nf, guia: r2(x.guia), cau: r2(x.cau), tits: x.tits, viaEx: r2(x.viaEx || 0), extra, aLiberar, ex: ex.get(d.id) || null, ent, dif, st, cot: S.cot.get(linkedDocs.get(d.id))?.num ?? null };
     });
+    // pedidos que dividem a mesma nota: o total dos dois juntos (a sobra da nota fica repartida entre eles)
+    { const L = new Map(linhas.map((x) => [x.d.id, x]));
+      for (const x of linhas) { const ids = new Set([x.d.id]); for (const t of x.tits) for (const o of t.junto || []) ids.add(o); if (ids.size < 2) continue;
+        const g = [...ids].map((id) => L.get(id)).filter(Boolean); x.grupo = { ids: [...ids], ent: r2(g.reduce((a, y) => a + y.ent, 0)), nf: r2(g.reduce((a, y) => a + y.nf, 0)) }; } }
     // notas lançadas pelo financeiro sem o nº do pedido/contrato: se as do mesmo fornecedor fecham a falta, contam
     const nomeKey = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" ");
     const finPor = new Map();
@@ -2652,7 +2665,8 @@ ${eap.txt}`;
 
   // avisos e botões de conferência das notas de um pedido/contrato (linha de nfAnalise)
   function nfAcoes(x) {
-    return ((x.st === "acima" || x.st === "falta") && x.d.tipo === "PC" ? (() => {
+    return (x.grupo ? `<div class="qc-warn" style="margin-top:4px">Nota lançada junto com ${esc(x.grupo.ids.filter((i) => i !== x.d.id).join(", "))}. Somando os ${x.grupo.ids.length} pedidos: entregue ${fmt(x.grupo.ent)}, notas ${fmt(x.grupo.nf)}` +
+      `${Math.abs(x.grupo.nf - x.grupo.ent) >= 1 ? ` → <b>${x.grupo.nf > x.grupo.ent ? "nota a mais" : "falta nota"} ${fmt(Math.abs(x.grupo.nf - x.grupo.ent))}</b>` : " → batem"}.</div>` : "") + ((x.st === "acima" || x.st === "falta") && x.d.tipo === "PC" ? (() => {
         // notas de outros fornecedores lançadas neste pedido (ex.: outra concreteira, transportadora, faturamento direto)
         const nk = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" "), meu = nk(x.d.forn), por = new Map();
         for (const t of x.tits) if (t.tipo !== "GUIA" && t.tipo !== "CAU") { const k = t.r[1].replace(/^\d+\s*-\s*/, ""); por.set(k, (por.get(k) || 0) + t.parte); }
