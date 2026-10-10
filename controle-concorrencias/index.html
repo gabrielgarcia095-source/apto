@@ -278,11 +278,11 @@ dl.kv dd { margin: 0; }
     </div>
     <div class="panel">
       <h2>Planilha de orçamento</h2>
-      <p class="hint" style="margin:0">Escolha o arquivo .xlsx (ou .csv) de onde vem a conferência. A importação substitui a anterior; suas cotações não mudam.</p>
-      <label>Arquivo
-        <input type="file" id="i-file" accept=".xlsx,.xlsm,.xls,.csv">
-      </label>
-      <div id="i-map" hidden style="display:grid; gap:10px">
+      <p class="hint" style="margin:0">A importação substitui a anterior e atualiza a EAP; suas cotações não mudam.</p>
+      <div class="dropzone" id="i-drop"><b>Arraste a planilha de orçamento aqui</b><span class="hint">ou clique para escolher (.xlsx)</span><input type="file" id="i-file" accept=".xlsx,.xlsm,.xls,.csv"></div>
+      <div class="msg" id="i-msg" role="status"></div>
+      <details id="i-adv" hidden><summary class="hint">Ajustar aba e colunas (só se algo vier errado)</summary>
+      <div id="i-map" style="display:grid; gap:10px; margin-top:8px">
         <label>Aba <select id="i-sheet"></select></label>
         <label>Linha do cabeçalho <input id="i-header" type="number" min="1" value="1"></label>
         <label>Coluna do Nº da cotação <select id="i-c-num"></select></label>
@@ -291,8 +291,8 @@ dl.kv dd { margin: 0; }
         <label>Coluna da descrição (opcional) <select id="i-c-desc"></select></label>
         <label>Coluna do ID da linha (para manter vínculos) <select id="i-c-id"></select></label>
       </div>
-      <div class="msg" id="i-msg" role="status"></div>
-      <div class="row"><button class="btn primary" id="i-go" type="button" disabled>Substituir conferência</button></div>
+      <div class="row" style="margin-top:8px"><button class="btn primary" id="i-go" type="button" disabled>Importar com estas colunas</button></div>
+      </details>
     </div>
     <div class="panel">
       <h2>Conferência atual</h2>
@@ -733,8 +733,14 @@ dl.kv dd { margin: 0; }
     $("i-go").disabled = !S.db;
   }
 
-  $("i-file").addEventListener("change", async (ev) => {
-    const f = ev.target.files?.[0]; if (!f) return;
+  {
+    const dz = $("i-drop");
+    for (const t of ["dragenter", "dragover"]) dz.addEventListener(t, (ev) => { ev.preventDefault(); dz.classList.add("over"); });
+    for (const t of ["dragleave", "drop"]) dz.addEventListener(t, () => dz.classList.remove("over"));
+    dz.addEventListener("drop", (ev) => { ev.preventDefault(); const f = ev.dataTransfer?.files?.[0]; if (f) lerPlanilha(f); });
+  }
+  $("i-file").addEventListener("change", (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (f) lerPlanilha(f); });
+  async function lerPlanilha(f) {
     $("i-msg").className = "msg"; $("i-msg").textContent = "Lendo arquivo…";
     try {
       const buf = await f.arrayBuffer();
@@ -747,10 +753,13 @@ dl.kv dd { margin: 0; }
         || names.find(hasCols) || names[0];
       $("i-sheet").value = best;
       $("i-header").value = guessHeader(sheetRows(best)) + 1;
-      $("i-map").hidden = false;
+      $("i-adv").hidden = false; $("i-adv").open = false;
       fillCols();
+      // planilha no formato de sempre (aba LANÇAMENTOS com Nº COTAÇÃO, VALOR e ID): importa direto
+      const certo = /LAN[CÇ]AMENTO/i.test(best) && pending && $("i-c-id").value !== "" && /COTA/i.test($("i-c-num").selectedOptions[0]?.textContent || "");
+      if (certo) $("i-go").click(); else { $("i-adv").open = true; $("i-msg").textContent += " Confira as colunas abaixo e clique em Importar."; }
     } catch { WB = null; $("i-msg").className = "msg err"; $("i-msg").textContent = "Não consegui ler esse arquivo. Salve como .xlsx e tente de novo."; }
-  });
+  }
   $("i-sheet").addEventListener("change", () => { $("i-header").value = guessHeader(sheetRows($("i-sheet").value)) + 1; fillCols(); });
   $("i-header").addEventListener("change", fillCols);
   for (const id of ["i-c-num", "i-c-val", "i-c-item", "i-c-desc", "i-c-id"]) $(id).addEventListener("change", preview);
@@ -802,7 +811,7 @@ dl.kv dd { margin: 0; }
         }
       }
       msg.textContent = `Conferência substituída: ${pending.rows.length} lançamentos.${eapMsg}`;
-      pending = null; WB = null; $("i-map").hidden = true; $("i-file").value = "";
+      pending = null; WB = null; $("i-adv").hidden = true; $("i-file").value = "";
     } catch (e) { msg.className = "msg err"; msg.textContent = errText(e); btn.disabled = false; }
   });
 
