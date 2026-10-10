@@ -1487,6 +1487,9 @@ ${eap.txt}`;
   // Devolve, para cada cotação, os documentos ligados (certos) e as sugestões, com o motivo
   // documentos citados na cotação ("ADITIVO CT165", "PC 1022")
   const citaDoc = (c) => [...fold(`${c.desc} ${c.obs || ""}`).matchAll(/\b(CT|PC)\s*[\/\-.]?\s*(\d{3,4})\b/g)].map((m) => m[1] === "CT" ? "CT/" + m[2] : "PC " + m[2]);
+  // palavras do documento: fornecedor + descrição dos itens do pedido (Relação de Pedidos)
+  const docToks = (d) => toks(`${d.forn} ${(itensOf(d)?.[7] || []).map((i) => i[0]).join(" ")}`);
+  const raiz = (set) => new Map([...set].map((w) => [w.slice(0, 5), w]));
   function matchAll(cotList, docs, elos) {
     const fixedList = elos?.links || [];   // [{ doc, cot, parte? }]: um documento pode estar em mais de uma cotação
     const rej = elos?.rej || {};            // docId -> [cotId, ...]
@@ -1519,10 +1522,10 @@ ${eap.txt}`;
     });
 
     // candidatos por valor
-    const cand = [];
+    const cand = [], dtk = new Map();
     for (const c of cotList) {
       if (linkedCot.has(c.id)) continue;
-      const ctoks = toks(`${c.desc} ${c.obs || ""} ${(c.qc?.vencedores || []).map((v) => v.fornecedor).join(" ")}`);
+      const ctoks = raiz(toks(`${c.desc} ${c.obs || ""} ${(c.qc?.vencedores || []).map((v) => v.fornecedor).join(" ")}`));
       const exp = expected.get(c.id);
       for (const a of cotAmounts(c)) {
         for (const d of free) {
@@ -1533,14 +1536,14 @@ ${eap.txt}`;
             const diff = Math.abs(v - a.v);
             const exato = diff < 0.005, perto = !exato && diff <= Math.max(1, a.v * 0.0005);
             if (!exato && !perto) continue;
-            const ft = toks(d.forn); const comum = [...ft].filter((w) => ctoks.has(w));
+            const ft = dtk.get(d.id) || dtk.set(d.id, raiz(docToks(d))).get(d.id); const comum = [...ft.keys()].filter((w) => ctoks.has(w)).map((w) => ft.get(w));
             const dd = exp != null ? Math.abs(parseDate(d.data) - exp) / DAY : null;
             let score = (exato ? 100 : 55) - (princ ? 0 : 25) - (f === "sec" ? 2 : 0) - (a.k !== "aprovado" ? 5 : 0) + (comum.length ? 30 : 0)
               + (dd == null ? 0 : dd <= 60 ? 10 : dd > 240 ? -15 : 0) - (/Cancelad|Rescindid/i.test(d.sit) ? 5 : 0)
               + (d.sec > 0 && !/Cancelad|Rescindid/i.test(d.sit) ? 3 : 0); // com entrega/medição: é o que está em uso
             const campo = d.tipo === "CT" ? (f === "prim" ? "valor contratado" : princ ? "valor efetivo medido (contrato encerrado)" : "valor medido")
               : (f === "prim" ? "total do pedido" : princ ? "valor efetivo entregue (pedido cancelado)" : "total entregue");
-            const por = `${exato ? "valor exato" : `valor quase igual (dif. ${fmt(v - a.v)})`}: ${campo} = ${a.k}` + (comum.length ? ` · fornecedor citado (${comum.join(", ")})` : "") + (dd != null && dd > 240 ? " · data distante do esperado" : "");
+            const por = `${exato ? "valor exato" : `valor quase igual (dif. ${fmt(v - a.v)})`}: ${campo} = ${a.k}` + (comum.length ? ` · fornecedor/itens batem com a cotação (${comum.slice(0, 3).join(", ")})` : "") + (dd != null && dd > 240 ? " · data distante do esperado" : "");
             cand.push({ c, d, score, exato, f, princ, a, comum, por, dd });
           }
         }
@@ -1560,9 +1563,21 @@ ${eap.txt}`;
       if (x.dd == null || x.dd <= JANELA) { add(okCot, ck(x), x.d.id); add(okDoc, x.d.id, x.c.id); }
     }
     const sz = (m, k) => m.get(k)?.size || 0;
+    // desempate pelo texto: entre os de mesmo valor, só este par tem fornecedor/itens em comum
+    const temComum = new Set(), nCot = new Map(), nDoc = new Map();
+    for (const x of cand) if (x.princ) { if (x.comum.length) temComum.add(`${x.c.id}|${x.d.id}`); add(nCot, x.c.id, x.d.id); add(nDoc, x.d.id, x.c.id); }
+    const certoDoc = new Set(), certoCot = new Set();
+    const resta = (set, fora) => [...(set || [])].filter((k) => !fora.has(k));
     for (const x of cand) {
       if (docTaken.has(x.d.id) || cotTaken.has(x.c.id)) continue;
-      const unico = sz(exCot, ck(x)) === 1 && sz(exDoc, x.d.id) === 1;
+      // (outro documento do mesmo fornecedor com o mesmo valor: o texto não diferencia, fica para você)
+      const desempate = x.princ && x.comum.length > 0 && resta(exCot.get(ck(x)), certoDoc).every((id) => id === x.d.id || (!temComum.has(`${x.c.id}|${id}`) && fornKey(byId.get(id)?.forn) !== fornKey(x.d.forn)))
+        && resta(exDoc.get(x.d.id), certoCot).every((cid) => cid === x.c.id || !temComum.has(`${cid}|${x.d.id}`));
+      // por eliminação: os outros de mesmo valor já foram ligados com certeza
+      const elimina = resta(exCot.get(ck(x)), certoDoc).length === 1 && resta(exDoc.get(x.d.id), certoCot).length === 1;
+      const unico = (sz(exCot, ck(x)) === 1 && sz(exDoc, x.d.id) === 1) || elimina;
+      // centavos de diferença: só com fornecedor/itens batendo e sem nenhum outro candidato dos dois lados
+      const quase = !x.exato && x.princ && x.comum.length > 0 && sz(nCot, x.c.id) === 1 && sz(nDoc, x.d.id) === 1;
       const dataOk = x.dd != null && x.dd <= JANELA;
       const unicoNaData = dataOk && sz(okCot, ck(x)) === 1 && sz(okDoc, x.d.id) === 1;
       const valorForte = Math.round(x.a.v * 100) % 100 !== 0 || x.a.v >= 5000;
@@ -1570,10 +1585,10 @@ ${eap.txt}`;
       const contraFornecedor = ((x.c.qc?.vencedores || []).length && !x.comum.length) || outroDoc;
       // Certo só com valor exato no campo principal, sem fornecedor contrário ao QC, e:
       //  único em valor (e valor não redondo/baixo, ou data compatível), ou o único com data compatível
-      const certo = x.exato && x.princ && !contraFornecedor && !mexida.has(x.c.id) && ((unico && (valorForte || dataOk)) || unicoNaData);
+      const certo = !contraFornecedor && !mexida.has(x.c.id) && (quase || x.exato && x.princ && ((unico && (valorForte || dataOk || x.comum.length > 0)) || unicoNaData || desempate));
       docTaken.add(x.d.id); cotTaken.add(x.c.id);
       const r = res.get(x.c.id);
-      if (certo) r.certos.push({ doc: x.d, por: x.por + (unico ? " · único possível" : " · único com data compatível"), auto: true });
+      if (certo) { certoDoc.add(x.d.id); certoCot.add(x.c.id); r.certos.push({ doc: x.d, por: x.por + (quase ? " · só centavos de diferença" : elimina && !(sz(exCot, ck(x)) === 1 && sz(exDoc, x.d.id) === 1) ? " · por eliminação (os outros de mesmo valor já têm dono)" : unico ? " · único possível" : desempate ? " · desempate pelo fornecedor/itens" : " · único com data compatível"), auto: true }); }
       else {
         const motivo = !x.exato ? "" : !x.princ ? " · bateu só com o valor entregue/medido" : outroDoc ? ` · a cotação cita ${cita.join(", ")}` : contraFornecedor ? " · fornecedor diferente do vencedor do QC"
           : mexida.has(x.c.id) ? " · você descartou outro documento nesta cotação: confirme" : !unico ? " · há outros documentos ou cotações com o mesmo valor" : " · valor redondo e baixo, e a data não confirma";
