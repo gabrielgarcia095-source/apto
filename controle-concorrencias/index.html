@@ -2172,7 +2172,9 @@ ${eap.txt}`;
     const A = S.nfMeta && temDocs() ? nfAnalise() : null, linhaDe = new Map((A?.linhas || []).map((n) => [n.d.id, n]));
     const P = temDocs() ? pedLists() : null, sug = new Map((P?.sug || []).map((r) => [r.c.id, r]));
     const tol = (x) => Math.max(1, (x.c.lanc || 0) * 0.005);
-    const nfRuim = (x) => x.docs.some((d) => { const n = linhaDe.get(d.d.id); return n && (["falta", "acima", "semnota", "liberar"].includes(n.st) || n.novos?.length || n.finSug); });
+    const nfRuim = (x) => x.docs.some((d) => { const n = linhaDe.get(d.d.id); return n && (["falta", "acima", "semnota"].includes(n.st) || n.novos?.length || n.finSug); });
+    // contrato com medição feita e ainda não liberada: não é erro, só espera a nota
+    const liberar = (x) => x.docs.some((d) => linhaDe.get(d.d.id)?.st === "liberar");
     const C = {
       lancar: (x) => (x.c.valor > 0 && !(x.c.lanc > 0)) || !!x.dvPend?.length,
       conf: (x) => sug.has(x.c.id),
@@ -2184,7 +2186,7 @@ ${eap.txt}`;
       ok: (x) => x.sit === "enc" && Math.abs(x.ajuste) <= tol(x),
       aguarda: (x) => x.c.valor == null,
     };
-    return { C, linhaDe, P, sug };
+    return { C, linhaDe, P, sug, liberar };
   }
   const RAS_PEND = ["lancar", "conf", "sem", "notas", "dev", "add"];
   function rasDetail(x, K) {
@@ -2276,7 +2278,7 @@ ${eap.txt}`;
       : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? `<b class="neg">passou ${fmt(-x.aConsumir)}</b>` : `<span class="hint">em aberto: falta ${fmt(Math.max(0, x.aConsumir))}</span>`)
       : x.c.valor == null ? `<span class="pill s-AGUARDANDO">aguardando valor</span>` : !(x.c.valor > 0) ? `<span class="hint">não utilizada</span>` : `<span class="pill s-FALTA">${x.j ? "justificada" : "sem pedido"}</span>`;
     const tags = (x) => [K.C.lancar(x) ? `<span class="ras-tag bad">falta lançar no orçamento</span>` : "", K.C.conf(x) ? `<span class="ras-tag">confirmar pedido</span>` : "",
-      K.C.notas(x) ? `<span class="ras-tag">notas a conferir</span>` : "", estouro(x) > 0 ? `<span class="ras-tag bad">estouro ${fmt(estouro(x))}</span>` : "",
+      K.C.notas(x) ? `<span class="ras-tag">notas a conferir</span>` : K.liberar(x) ? `<span class="ras-tag ok">medição a liberar</span>` : "", estouro(x) > 0 ? `<span class="ras-tag bad">estouro ${fmt(estouro(x))}</span>` : "",
       origemDe(x.c.num) ? `<span class="ras-tag ok">${origemDe(x.c.num).tipo === "AD" ? "aditivo" : "devolução"} da ${esc(origemDe(x.c.num).orig)}</span>` : ""].join("");
     const orc = (x) => x.c.lanc ? `<span class="num">${fmt(x.c.lanc)}</span>${Math.abs(x.c.lanc - (x.c.valor || 0)) >= 1 ? `<div class="hint">≠ aprovado</div>` : ""}` : `<span class="neg">não lançado</span>`;
     const ped = (x) => !x.docs.length ? (K.C.conf(x) ? `<span class="hint">sugestão: ${esc(K.sug.get(x.c.id).s.map((s) => s.doc.id).join(", "))}</span>` : x.c.valor > 0 ? `<span class="neg">sem pedido</span>` : "—")
