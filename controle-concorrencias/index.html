@@ -2588,7 +2588,7 @@ ${eap.txt}`;
     }
     return { rows, total };
   }
-  const ehPrevisao = (r) => /^(PPC|PCT)$/.test(nfTipo(r[2]));
+  const ehPrevisao = (r) => /^(PPC|PCT|PRV)$/.test(nfTipo(r[2]));
   function nfRows() { const out = []; const n = S.nfMeta?.partes ?? 0; for (let i = 0; i < n; i++) out.push(...(S.nfParts.get(`parte-${i}`) || [])); return out.filter((r) => !ehPrevisao(r)); }
   const nfTipo = (doc) => fold(String(doc).split("/")[0]).replace(/[^A-Z]/g, "");
   // pedido/contrato do título: coluna CT/OC (pode ter mais de um, um por linha); caução "CAU /165" é do CT/165
@@ -2621,10 +2621,12 @@ ${eap.txt}`;
     };
     const nk = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" ");
     for (const r of rows) {
-      let ids = nfIds(r), viaEx = false; const t = nfTipo(r[2]), v = r[7] || 0;
+      // caução retida de uma nota ("NFE /13/CAUCAO"): é do contrato daquela nota, e conta como caução, não como nota
+      const cauDe = String(r[2]).match(/^(.*?)\s*\/\s*CAU[CÇ][AÃ]O\s*$/i);
+      let ids = nfIds(r), viaEx = false; const t = cauDe ? "CAU" : nfTipo(r[2]), v = r[7] || 0;
       if (!ids.length) {
         // está nas liberações de um contrato (mesmo documento e valor, ou mesmo documento e fornecedor)?
-        const c = (libIdx.get(dn(r[2])) || []).filter((x) => Math.abs(x.v - v) < 0.02 || nk(x.forn) === nk(r[1]));
+        const c = (libIdx.get(dn(cauDe ? cauDe[1] : r[2])) || []).filter((x) => (!cauDe && Math.abs(x.v - v) < 0.02) || nk(x.forn) === nk(r[1]));
         const cts = [...new Set(c.map((x) => x.ct))];
         if (cts.length === 1) { ids = cts; viaEx = true; }
       }
