@@ -1,0 +1,1649 @@
+{
+ "salvoEm": "2026-10-10",
+ "config/elos": {
+  "errados": [
+   {
+    "cot": "q0271",
+    "doc": "PC 1022",
+    "em": "2026-10-07T21:08:07.506Z"
+   },
+   {
+    "cot": null,
+    "doc": "PC 1122",
+    "em": "2026-10-07T22:41:03.864Z"
+   },
+   {
+    "cot": null,
+    "doc": "PC 1070",
+    "em": "2026-10-07T22:41:08.404Z"
+   },
+   {
+    "cot": null,
+    "doc": "PC 1056",
+    "em": "2026-10-07T22:41:12.929Z"
+   },
+   {
+    "cot": null,
+    "doc": "PC 977",
+    "em": "2026-10-07T22:41:16.381Z"
+   },
+   {
+    "cot": null,
+    "doc": "PC 701",
+    "em": "2026-10-07T22:41:59.540Z"
+   }
+  ],
+  "just": [
+   {
+    "cot": "q0503",
+    "em": "2026-10-07T23:45:00.000Z",
+    "motivo": "semPedido",
+    "obs": "Equipe própria (folha), sem quadro de concorrência"
+   },
+   {
+    "cot": "q0505",
+    "em": "2026-10-07T23:45:00.000Z",
+    "motivo": "semPedido",
+    "obs": "Equipe própria (folha), sem quadro de concorrência"
+   },
+   {
+    "cot": "q0506",
+    "em": "2026-10-07T23:45:00.000Z",
+    "motivo": "semPedido",
+    "obs": "Equipe própria (folha), sem quadro de concorrência"
+   },
+   {
+    "cot": "q0507",
+    "em": "2026-10-07T23:45:00.000Z",
+    "motivo": "semPedido",
+    "obs": "Equipe própria (folha), sem quadro de concorrência"
+   },
+   {
+    "cot": "q0508",
+    "em": "2026-10-07T23:45:00.000Z",
+    "motivo": "semPedido",
+    "obs": "Equipe própria (folha), sem quadro de concorrência"
+   },
+   {
+    "cot": "q0510",
+    "em": "2026-10-07T23:45:00.000Z",
+    "motivo": "semPedido",
+    "obs": "Equipe própria (folha), sem quadro de concorrência"
+   }
+  ],
+  "links": [
+   {
+    "cot": "q0004",
+    "doc": "CT/139",
+    "em": "2026-10-07T20:54:39.687Z"
+   },
+   {
+    "cot": "q0023",
+    "doc": "PC 679",
+    "em": "2026-10-07T20:54:47.122Z"
+   },
+   {
+    "cot": "q0030",
+    "doc": "CT/141",
+    "em": "2026-10-07T20:54:59.609Z",
+    "parte": 288000
+   },
+   {
+    "cot": "q0050",
+    "doc": "PC 729",
+    "em": "2026-10-07T20:55:14.068Z"
+   },
+   {
+    "cot": "q0063",
+    "doc": "PC 723",
+    "em": "2026-10-07T20:55:21.590Z"
+   },
+   {
+    "cot": "q0081",
+    "doc": "PC 789",
+    "em": "2026-10-07T20:57:32.792Z"
+   },
+   {
+    "cot": "q0093",
+    "doc": "PC 781",
+    "em": "2026-10-07T20:57:39.598Z"
+   },
+   {
+    "cot": "q0100",
+    "doc": "PC 783",
+    "em": "2026-10-07T20:59:26.237Z"
+   },
+   {
+    "cot": "q0015",
+    "doc": "PC 702",
+    "em": "2026-10-07T21:04:51.537Z"
+   },
+   {
+    "cot": "q0201",
+    "doc": "PC 897",
+    "em": "2026-10-07T21:05:00.331Z"
+   },
+   {
+    "cot": "q0205",
+    "doc": "PC 901",
+    "em": "2026-10-07T21:05:07.834Z"
+   },
+   {
+    "cot": "q0350",
+    "doc": "PC 1020",
+    "em": "2026-10-07T21:09:49.890Z"
+   },
+   {
+    "cot": "q0310",
+    "doc": "PC 974",
+    "em": "2026-10-07T21:09:57.129Z"
+   },
+   {
+    "cot": "q0387",
+    "doc": "CT/174",
+    "em": "2026-10-07T21:10:04.853Z"
+   },
+   {
+    "cot": "q0388",
+    "doc": "PC 1065",
+    "em": "2026-10-07T21:10:26.721Z"
+   },
+   {
+    "cot": "q0411",
+    "doc": "PC 1087",
+    "em": "2026-10-07T21:10:38.722Z"
+   },
+   {
+    "cot": "q0448",
+    "doc": "CT/173",
+    "em": "2026-10-07T21:10:46.034Z"
+   },
+   {
+    "cot": "q0504",
+    "doc": "CT/164",
+    "em": "2026-10-07T21:11:22.510Z"
+   },
+   {
+    "cot": "q0502",
+    "doc": "CT/153",
+    "em": "2026-10-07T21:21:25.393Z"
+   },
+   {
+    "cot": "q0502",
+    "doc": "CT/158",
+    "em": "2026-10-07T21:21:25.393Z"
+   },
+   {
+    "cot": "q0502",
+    "doc": "CT/159",
+    "em": "2026-10-07T21:21:25.393Z"
+   },
+   {
+    "cot": "q0502",
+    "doc": "CT/167",
+    "em": "2026-10-07T21:21:25.393Z"
+   },
+   {
+    "cot": "q0502",
+    "doc": "CT/179",
+    "em": "2026-10-07T21:21:25.393Z"
+   },
+   {
+    "cot": "q0509",
+    "doc": "CT/154",
+    "em": "2026-10-07T21:22:49.786Z"
+   },
+   {
+    "cot": "q0078",
+    "doc": "CT/155",
+    "em": "2026-10-07T22:07:31.934Z"
+   },
+   {
+    "cot": "q0498",
+    "doc": "CT/140",
+    "em": "2026-10-07T22:09:07.626Z"
+   },
+   {
+    "cot": "q0496",
+    "doc": "CT/165",
+    "em": "2026-10-07T22:09:20.351Z",
+    "parte": 595263.76
+   },
+   {
+    "cot": "q0073",
+    "doc": "CT/156",
+    "em": "2026-10-07T22:10:04.531Z"
+   },
+   {
+    "cot": "q0079",
+    "doc": "PC 774",
+    "em": "2026-10-07T22:10:51.822Z"
+   },
+   {
+    "cot": "q0124",
+    "doc": "CT/142",
+    "em": "2026-10-07T22:12:15.248Z"
+   },
+   {
+    "cot": "q0163",
+    "doc": "PC 896",
+    "em": "2026-10-07T22:12:49.571Z"
+   },
+   {
+    "cot": "q0247",
+    "doc": "CT/160",
+    "em": "2026-10-07T22:13:34.917Z"
+   },
+   {
+    "cot": "q0386",
+    "doc": "PC 1077",
+    "em": "2026-10-07T22:14:02.140Z"
+   },
+   {
+    "cot": "q0005",
+    "doc": "CT/144",
+    "em": "2026-10-07T22:14:44.075Z",
+    "parte": 146950
+   },
+   {
+    "cot": "q0006",
+    "doc": "CT/146",
+    "em": "2026-10-07T22:14:46.638Z",
+    "parte": 66000
+   },
+   {
+    "cot": "q0499",
+    "doc": "CT/141",
+    "em": "2026-10-07T22:15:06.801Z",
+    "parte": 159700
+   },
+   {
+    "cot": "q0463",
+    "doc": "CT/144",
+    "em": "2026-10-07T22:16:17.256Z",
+    "parte": 39841.2
+   },
+   {
+    "cot": "q0463",
+    "doc": "CT/146",
+    "em": "2026-10-07T22:16:21.000Z",
+    "parte": 10000
+   },
+   {
+    "cot": "q0412",
+    "doc": "PC 1086",
+    "em": "2026-10-07T22:24:46.558Z"
+   },
+   {
+    "cot": "q0476",
+    "doc": "CT/165",
+    "em": "2026-10-07T23:59:00.000Z",
+    "parte": 100000
+   },
+   {
+    "cot": "q0046",
+    "doc": "CT/142",
+    "em": "2026-10-07T22:31:56.403Z",
+    "parte": 168633.33
+   },
+   {
+    "cot": "q0123",
+    "doc": "CT/142",
+    "em": "2026-10-07T22:32:13.164Z",
+    "parte": 73220
+   },
+   {
+    "cot": "q0211",
+    "doc": "CT/142",
+    "em": "2026-10-07T22:32:18.976Z",
+    "parte": 45400
+   },
+   {
+    "cot": "q0086",
+    "doc": "PC 740",
+    "em": "2026-10-07T22:36:42.644Z"
+   },
+   {
+    "cot": "q0086",
+    "doc": "PC 747",
+    "em": "2026-10-07T22:36:44.825Z",
+    "parte": 4424.43
+   },
+   {
+    "cot": "q0096",
+    "doc": "PC 745",
+    "em": "2026-10-07T22:36:51.699Z"
+   },
+   {
+    "cot": "q0096",
+    "doc": "PC 748",
+    "em": "2026-10-07T22:36:51.699Z"
+   },
+   {
+    "cot": "q0502",
+    "doc": "CT/170",
+    "em": "2026-10-07T23:29:17.997Z"
+   },
+   {
+    "cot": "q0020",
+    "doc": "PC 675",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0020",
+    "doc": "PC 676",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0202",
+    "doc": "PC 877",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0202",
+    "doc": "PC 878",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0243",
+    "doc": "PC 910",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0243",
+    "doc": "PC 919",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0244",
+    "doc": "PC 911",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0244",
+    "doc": "PC 918",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0013",
+    "doc": "PC 763",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0058",
+    "doc": "PC 718",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0060",
+    "doc": "PC 720",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0263",
+    "doc": "PC 934",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0377",
+    "doc": "PC 1048",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0219",
+    "doc": "PC 880",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0115",
+    "doc": "PC 779",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0148",
+    "doc": "PC 815",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0148",
+    "doc": "PC 816",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0286",
+    "doc": "PC 958",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0271",
+    "doc": "CT/168",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0271",
+    "doc": "PC 1066",
+    "em": "2026-10-07T23:45:00.000Z",
+    "fd": true,
+    "parte": 0
+   },
+   {
+    "cot": "q0384",
+    "doc": "CT/383",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0384",
+    "doc": "PC 1184",
+    "em": "2026-10-07T23:45:00.000Z",
+    "fd": true,
+    "parte": 0
+   },
+   {
+    "cot": "q0502",
+    "doc": "CT/151",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "q0502",
+    "doc": "CT/152",
+    "em": "2026-10-07T23:45:00.000Z"
+   },
+   {
+    "cot": "t41wgd2j8q03t7amdgja",
+    "doc": "PC 781",
+    "em": "2026-10-08T01:25:11.566Z",
+    "parte": 49631.49
+   },
+   {
+    "cot": "q0396",
+    "doc": "PC 1078",
+    "em": "2026-10-08T02:25:59.649Z",
+    "parte": 67760
+   },
+   {
+    "cot": "73y0q5zi8dxsl6in1lwv",
+    "doc": "PC 1078",
+    "em": "2026-10-08T02:25:59.649Z",
+    "parte": 12320
+   },
+   {
+    "cot": "q0088",
+    "doc": "PC 761",
+    "em": "2026-10-08T02:26:25.270Z",
+    "parte": 292695.39
+   },
+   {
+    "cot": "xhero95v0iia55xtq4pa",
+    "doc": "PC 761",
+    "em": "2026-10-08T02:26:25.270Z",
+    "parte": 10704.84
+   },
+   {
+    "cot": "q0374",
+    "doc": "PC 1044",
+    "em": "2026-10-08T13:27:27.311Z"
+   },
+   {
+    "cot": "q0374b",
+    "doc": "PC 1046",
+    "em": "2026-10-08T13:27:27.311Z"
+   }
+  ],
+  "rej": [
+   {
+    "cot": "q0476",
+    "doc": "PC 1066"
+   }
+  ]
+ },
+ "config/explicados": {
+  "CT/175": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "fin": [
+    "26507|NFE/97834",
+    "26815|NFE/98672"
+   ],
+   "obs": "Hidrogás = faturamento direto da Rimag",
+   "tits": [
+    "26816|NFSE/311213",
+    "26815|NFE/98672",
+    "26565|NFSE/06",
+    "27106|NFSE/15"
+   ]
+  },
+  "PC 1116": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "F.R. Comércio de Telas = mesma empresa da F.R. Telas",
+   "tits": [
+    "26098|NFE/3334",
+    "25985|FAT/594",
+    "26089|NFE/1250",
+    "26769|FAT/0611"
+   ]
+  },
+  "PC 1173": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Tigre emite nota pela Merc",
+   "tits": [
+    "26652|NFE/210680",
+    "26650|NFE/211311",
+    "26653|NFE/29767"
+   ]
+  },
+  "PC 688": {
+   "em": "2026-10-08T00:00:00.000Z",
+   "obs": "Ydeal Café ok",
+   "tits": [
+    "20257|NFE/5088",
+    "20338|NFE/5123",
+    "20418|NFE/5203",
+    "20471|NFE/5243",
+    "20575|NFE/5310",
+    "20711|NFE/5366",
+    "20784|NFE/5440",
+    "20865|NFE/5489",
+    "20975|NFE/5582",
+    "21104|NFE/5645",
+    "21344|NFE/5746",
+    "21263|NFE/5797",
+    "21369|NFE/5900",
+    "21522|NFE/5944",
+    "21685|NFE/6057",
+    "21829|NFE/6114",
+    "21960|NFE/6230",
+    "22111|NFE/6292",
+    "22274|NFE/6411",
+    "22408|NFE/6489",
+    "22555|NFE/6599",
+    "22739|NFE/6672",
+    "22830|NFE/6787",
+    "23018|NFE/6919"
+   ]
+  },
+  "PC 689": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Império e Atlas = locadoras lançadas no pedido da Qualy",
+   "tits": [
+    "19892|FAT/6106",
+    "19997|FAT/6306",
+    "20017|FAT/6319",
+    "20186|FAT/6499",
+    "20197|FAT/6512",
+    "20277|FAT/6560",
+    "20393|FAT/6784",
+    "20531|FAT/6969",
+    "20734|FAT/7233",
+    "21055|FAT/48296",
+    "21135|FAT/7713",
+    "21134|FAT/7479",
+    "21140|FAT/7742",
+    "21223|FAT/49095",
+    "21266|FAT/49096",
+    "21256|FAT/13702",
+    "21403|FAT/7863",
+    "21298|FAT/49405",
+    "21314|FAT/7887",
+    "21405|FAT/7903",
+    "21373|FAT/49794",
+    "21435|FAT/50069",
+    "21442|FAT/50132",
+    "21544|FAT/50337",
+    "21577|FAT/8124",
+    "21713|FAT/8152",
+    "21669|FAT/50875",
+    "21683|FAT/1330",
+    "21702|FAT/51139",
+    "21753|FAT/51213",
+    "21780|FAT/51314",
+    "21783|FAT/1385",
+    "21951|FAT/51784",
+    "22077|FAT/52308",
+    "22332|FAT/1434",
+    "22170|FAT/52626",
+    "22251|FAT/52895",
+    "22382|FAT/53298",
+    "22411|FAT/1484",
+    "22525|FAT/53815",
+    "22556|FAT/8915",
+    "22561|FAT/53950",
+    "22625|FAT/54246",
+    "22784|FAT/1539",
+    "22831|FAT/54844",
+    "22841|FAT/14483",
+    "23017|FAT/1599",
+    "23126|FAT/55682",
+    "23212|FAT/55927",
+    "23387|FAT/1652",
+    "23384|FAT/9479",
+    "23458|FAT/56608",
+    "23512|FAT/56673",
+    "23511|FAT/9634",
+    "23524|NFE/1711",
+    "23611|FAT/15017",
+    "23708|FAT/57470",
+    "23757|FAT/9806",
+    "23828|FAT/9834",
+    "23837|FAT/1766",
+    "23931|FAT/9930",
+    "23984|FAT/58154",
+    "24043|FAT/9986",
+    "24124|FAT/1813",
+    "24117|FAT/10019",
+    "24288|FAT/10146",
+    "24684|FAT/59965"
+   ]
+  },
+  "PC 732": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Ibitirama lançada no pedido da S.C. Cimento (ok)",
+   "tits": [
+    "20142|NFE/7433",
+    "20196|NFE/7583",
+    "20320|NFE/193875",
+    "20416|NFE/7979",
+    "20537|NFE/8117",
+    "20566|NFE/8146",
+    "20592|NFE/8245",
+    "22836|NFE/10644"
+   ]
+  },
+  "PC 739": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "AR3 lançada no pedido da Performance (ok)",
+   "tits": [
+    "20292|NFE/3307",
+    "20376|NFE/3344",
+    "20386|NFE/3364",
+    "20456|NFE/3413",
+    "20616|NFE/3449",
+    "21660|NFE/4151",
+    "21706|NFE/4188",
+    "21940|NFE/4228"
+   ]
+  },
+  "PC 741": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Riuma Mineração e Reversa Log lançadas no pedido da AR3 (ok)",
+   "tits": [
+    "20759|NFE/1028048",
+    "20760|NFE/1028049",
+    "20761|NFE/1028050",
+    "20757|NFE/1912",
+    "20616|NFE/3449"
+   ]
+  },
+  "PC 762": {
+   "em": "2026-10-08T00:00:00.000Z",
+   "obs": "Megacabos, Loja Elétrica, Nanoplastic e frete fazem parte deste pedido do kit elétrico",
+   "tits": [
+    "21216|NFE/14910",
+    "21217|NFE/3105",
+    "21416|NFE/250050440",
+    "21680|NFE/968314",
+    "21648|NFE/3174",
+    "21679|CF/115",
+    "21709|NFE/971147",
+    "22237|NFE/640441",
+    "22239|CF/137",
+    "22284|NFE/102059",
+    "22304|NFE/3238",
+    "22460|NFE/1578",
+    "22617|NFE/3269",
+    "22616|CF/148"
+   ]
+  },
+  "PC 768": {
+   "em": "2026-10-08T00:00:00.000Z",
+   "obs": "Lemos Bombeados lançada neste pedido da Mais Bombas (trocamos de fornecedor sem novo pedido)",
+   "tits": [
+    "22272|FAT/1297",
+    "22384|FAT/1305",
+    "22576|FAT/1774",
+    "22785|FAT/1795",
+    "22973|FAT/1832",
+    "23057|FAT/1854",
+    "23128|FAT/1864",
+    "23258|FAT/1882",
+    "23386|FAT/1904",
+    "24686|FAT/2007"
+   ]
+  },
+  "PC 779": {
+   "em": "2026-10-08T00:00:00.000Z",
+   "obs": "Lemos Bombeados lançada neste pedido da Mais Bombas (trocamos de fornecedor sem novo pedido)",
+   "tits": [
+    "21677|FAT/1259",
+    "21712|FAT/1261",
+    "21833|FAT/1275",
+    "21963|FAT/1279",
+    "22041|FAT/1284",
+    "22123|FAT/1289",
+    "23891|FAT/1948",
+    "24686|FAT/2007"
+   ]
+  },
+  "PC 780": {
+   "em": "2026-10-08T02:00:00.000Z",
+   "obs": "Ecomix substituiu a Usina Bela Vista (jan–mar/26) + fretes MA/M.A.C",
+   "tits": [
+    "21375|NFE/157021",
+    "21550|NFE/157878",
+    "21826|NFE/159457",
+    "22006|NFE/160402",
+    "22175|NFE/161089",
+    "22548|NFE/162813",
+    "22632|NFE/163680",
+    "22752|NFE/163781",
+    "22857|NFE/164909",
+    "23039|NFE/165739",
+    "23208|NFE/166659",
+    "23521|NFE/167553",
+    "23559|NFE/66366",
+    "23583|CF/11934",
+    "23835|NFE/67872",
+    "23836|CF/2951",
+    "23942|NFE/170022",
+    "24121|CF/3147",
+    "24122|NFE/69292",
+    "24291|NFE/171529",
+    "24692|NFE/172843",
+    "24842|NF/173682",
+    "24996|NFE/174453"
+   ]
+  },
+  "PC 781": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Transportadora Montecchio = frete dos blocos da Calblock",
+   "tits": [
+    "21410|NFE/113958",
+    "21411|CF/5772",
+    "21834|NFE/114888",
+    "21835|CF/6540",
+    "21893|NFE/114945",
+    "21894|CF/6592",
+    "21922|NFE/115040",
+    "21934|CF/6673",
+    "21935|NFE/115069",
+    "21936|CF/6698",
+    "21966|NFE/115156",
+    "21967|CF/6766",
+    "21996|CF/6826",
+    "21995|NFE/115224",
+    "22109|NFE/115494",
+    "22110|CF/7052",
+    "22159|NFE/115538",
+    "22160|CF/7094",
+    "22156|NFE/115561",
+    "22157|CF/7115",
+    "22182|NFE/115609",
+    "22183|CF/7157",
+    "22249|NFE/11679",
+    "22250|CF/7222",
+    "22535|NFE/116390",
+    "22550|CF/7843",
+    "22557|NFE/116443",
+    "22558|CF/7889",
+    "22572|NFE/116503",
+    "22573|CF/7943",
+    "22605|NFE/116576",
+    "22606|CF/8006",
+    "22614|CF/8031",
+    "22710|NFE/116603",
+    "22712|NFE/116604",
+    "22770|CF/008032",
+    "22755|NFE/116888",
+    "22772|CF/008265",
+    "22832|NFE/117027",
+    "22833|CF/8391",
+    "22854|NFE/117121",
+    "22856|CF/8471",
+    "22853|NFE/117188",
+    "22855|CF/8525",
+    "22892|NFE/117255",
+    "22893|NFE/117254",
+    "22898|CF/8586",
+    "22899|CF/8585",
+    "22894|NFE/117282",
+    "22897|CF/8613",
+    "23055|NFE/117550",
+    "23056|CF/8831",
+    "23131|NFE/117631",
+    "23133|CF/8900",
+    "23118|NFE/117714",
+    "23121|CF/8969",
+    "23134|NFE/117775",
+    "23135|CF/9011",
+    "23136|NFE/117773",
+    "23137|CF/9010",
+    "23296|NFE/118012",
+    "23297|CF/9218",
+    "23345|NFE/118086",
+    "23346|CF/9273",
+    "23396|NFE/118125",
+    "23397|CF/9306",
+    "23394|NFE/118162",
+    "23395|CF/9337",
+    "23553|NFE/118468",
+    "23554|CF/9584",
+    "23643|NFE/118614",
+    "23644|CF/9709",
+    "23672|NFE/118673",
+    "23673|CF/9755",
+    "23712|NFE/118735",
+    "23818|NFE/118865",
+    "23872|NFE/118948",
+    "23871|NFE/118971",
+    "23933|NFE/119113",
+    "23988|NFE/119185",
+    "24119|NFE/119338",
+    "24170|NFE/119452",
+    "24307|NFE/119572",
+    "24292|NFE/119661",
+    "24369|NFE/119851",
+    "24636|NFE/119996",
+    "24643|NFE/120075",
+    "24695|NFE/120296",
+    "24678|NFE/120330",
+    "24743|NFE/120449",
+    "24748|NFE/120500",
+    "24873|NFE/120672",
+    "24936|NFE/120785",
+    "24934|NFE/120844",
+    "25005|NFE/120878",
+    "25004|NFE/120940",
+    "25074|NFE/121013",
+    "25076|NFE/121083",
+    "25070|NFE/121141",
+    "25258|NFE/121340",
+    "25257|NFE/121390",
+    "25323|NFE/121434",
+    "25602|NFE/121479",
+    "25575|NFE/121651",
+    "25601|NFE/121703"
+   ]
+  },
+  "PC 798": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Usina Bela Vista e Supermix lançadas no pedido da Valebeton (ok)",
+   "tits": [
+    "20956|NFE/5944",
+    "20963|NFE/5968",
+    "20962|NFE/5976",
+    "21002|NFE/6004",
+    "21007|NFE/8912",
+    "21270|NFE/6154",
+    "21375|NFE/157021",
+    "21614|NFE/6236",
+    "21615|NFE/7457",
+    "21550|NFE/157878",
+    "21605|NFE/6259",
+    "21606|NFE/9254",
+    "21785|NFE/6330",
+    "21826|NFE/159457",
+    "21908|NFE/6351",
+    "21955|NFE/160072",
+    "21998|NFE/6395",
+    "22042|NFE/6424",
+    "22118|NFE/6452",
+    "22211|NFE/6478",
+    "22320|NFE/161517",
+    "22303|NFSE/6502",
+    "22328|NFSE/6534",
+    "22381|NFE/6564",
+    "22549|NFE/162880",
+    "22546|NFE/6632",
+    "22574|NFE/163247",
+    "22764|NFE/164199",
+    "23197|NFE/166491",
+    "23521|NFE/167553",
+    "23550|NFE/168166",
+    "23621|NFE/7040",
+    "23641|NFE/168685",
+    "23680|NFE/7061",
+    "23764|NFE/7102",
+    "23879|NFE/169619",
+    "23888|NFE/7144",
+    "23942|NFE/170022",
+    "23985|NFE/7160",
+    "24125|NFSE/7206",
+    "24330|NFSE/7221",
+    "24473|NFSE/7232",
+    "24535|NFSE/7273",
+    "24534|NFSE/7293",
+    "24687|NFSE/7359",
+    "25001|NFSE/7451",
+    "25075|NFSE/7485",
+    "25171|FAT/7561",
+    "25462|NFSE/20661",
+    "26259|NFSE/41153",
+    "25329|FAT/7553",
+    "25420|NFSE/7597",
+    "26260|NFSE/41302",
+    "25662|NFSE/7667",
+    "26261|NFE/41353",
+    "25775|NFE/7683",
+    "25860|NFE/41382",
+    "26017|NFE/7762",
+    "26408|NFSE/25004",
+    "26225|NFSE/7799",
+    "26222|NFSE/7824",
+    "26506|NFSE/7864",
+    "26656|NFSE/41660",
+    "26540|NFSE/7952",
+    "26657|NFSE/41785",
+    "26859|NFSE/8031",
+    "27089|NFSE/8049"
+   ]
+  },
+  "PC 844": {
+   "em": "2026-10-08T02:00:00.000Z",
+   "obs": "CSG fatura pela Casamata; W.G e Atlas = aluguel de perfuratriz",
+   "tits": [
+    "21786|NFE/1137",
+    "21994|FAT/60295",
+    "22090|FAT/1448",
+    "22166|FAT/60726",
+    "22455|FAT/61158",
+    "22626|NFE/1511",
+    "23624|NFE/1917"
+   ]
+  },
+  "PC 867": {
+   "em": "2026-10-08T00:00:00.000Z",
+   "obs": "Manfredini = perfil de alumínio (faturamento direto); Uvolt = instaladora das esquadrias da JAM",
+   "tits": [
+    "21999|NFE/6472",
+    "23248|NF/2587",
+    "23249|NFE/2659",
+    "23305|NFE/2689",
+    "23392|NFE/2722",
+    "23393|NFE/2729",
+    "23743|NFE/2881",
+    "23744|NFE/2946",
+    "24316|NFE/3181",
+    "24317|NFE/3179",
+    "24638|NFE/3292",
+    "24639|NFE/3294",
+    "24551|NFSE/60",
+    "25599|NFE/3777",
+    "25637|NFSE/71",
+    "26136|NFE/3978"
+   ]
+  },
+  "PC 868": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Brasmad não entregou; madeira comprada da Center Made",
+   "tits": [
+    "22197|NFE/15735",
+    "22155|NFE/2580"
+   ]
+  },
+  "PC 869": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Pass-Pro lançada no pedido da BDM (ok)",
+   "tits": [
+    "22007|NFE/1176",
+    "22766|NFE/001508",
+    "23749|NFE/1773",
+    "24945|NFE/2102"
+   ]
+  },
+  "PC 883": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Urbe lançada no pedido da DNA (ok)",
+   "tits": [
+    "22346|FAT/316018",
+    "22582|FAT/316917",
+    "22746|FAT/316918",
+    "22788|FAT/317856",
+    "22789|FAT/317855"
+   ]
+  },
+  "PC 895": {
+   "em": "2026-10-08T01:00:00.000Z",
+   "obs": "Metalúrgica Cataguazes = faturamento direto da Sudeste",
+   "tits": [
+    "22501|NFE/165330",
+    "23033|NFSE/496",
+    "23035|NFE/663",
+    "23736|NFE/677",
+    "23737|NFE/507",
+    "24320|NFSE/519",
+    "24323|NFE/690",
+    "25533|NFSE/540",
+    "25536|NFE/710",
+    "26498|NFSE/554"
+   ]
+  },
+  "PC 909": {
+   "em": "2026-10-08T02:00:00.000Z",
+   "obs": "Cobrefort = cabos do pedido faturados direto pela fábrica",
+   "tits": [
+    "22530|NFE/9089",
+    "22547|NFE/4260"
+   ]
+  }
+ },
+ "config/vinculos": {
+  "map": {
+   "760": {
+    "cot": "ENEL",
+    "desc": "OBRA DE RUA ENEL"
+   },
+   "762": {
+    "cot": "DIGIDOX",
+    "desc": "DIGIDOX"
+   },
+   "823": {
+    "cot": "EQ INDIRETA",
+    "desc": "PAULO ROBERTO D'MONT FIGUEIREDO (INICIO 19/08/24) ATÉ 31/07/27 - 36 MESES"
+   },
+   "824": {
+    "cot": "EQ INDIRETA",
+    "desc": "EDIMAR GOMES DE SOUSA (INICIO 26/08/24) ATÉ 31/07/27 - 36 MESES"
+   },
+   "825": {
+    "cot": "EQ INDIRETA",
+    "desc": "GABRIEL GARCIA (INICIO 01/09/24) ATÉ 28/02/27 - 31 MESES"
+   },
+   "826": {
+    "cot": "EQ INDIRETA",
+    "desc": "RENATA GONÇALVES SILVA (INICIO 01/09/24) ATÉ 13/03/26 - 17 MESES"
+   },
+   "827": {
+    "cot": "EQ INDIRETA",
+    "desc": "ANA CAROLINA SOARES (INICIO 01/02/25) ATÉ 31/05/26 - 16 MESES"
+   },
+   "828": {
+    "cot": "EQ INDIRETA",
+    "desc": "EDUARDO SILVA VIEIRA (INICIO 01/10/25) ATÉ 19/11/25 - 2 MESES"
+   },
+   "829": {
+    "cot": "EQ INDIRETA",
+    "desc": "ROGERIO DA SILVA BALDIN (INICIO 13/10/25) ATÉ 28/02/27 - 18 MESES"
+   },
+   "830": {
+    "cot": "EQ INDIRETA",
+    "desc": "GABRIEL PAIVA DE JESUS (INICIO 09/03/26) ATÉ 14/07/26 - 4 MESES"
+   },
+   "831": {
+    "cot": "EQ INDIRETA",
+    "desc": "VERGILIO AUGUSTO DE MELO VINCIGUERA (INICIO 15/04/26) ATÉ 31/07/27 - 17 MESES"
+   },
+   "832": {
+    "cot": "EQ INDIRETA",
+    "desc": "JACQUELINE APARECIDA VIEIRA (INICIO 10/08/26) ATÉ 31/03/27 - 9 MESES"
+   },
+   "833": {
+    "cot": "EQ APOIO",
+    "desc": "ROBERTO MIGUEL DE ANDRADE (INICIO 29/08/24) ATÉ 31/07/27 - 36 MESES"
+   },
+   "834": {
+    "cot": "EQ APOIO",
+    "desc": "ORDENER ROBERTO PRIMO OLIVEIRA (INICIO 29/08/24) ATÉ 31/07/27 - 36 MESES"
+   },
+   "835": {
+    "cot": "EQ APOIO",
+    "desc": "RODRIGO NARDES GOMES (INICIO 27/10/25) ATÉ 10/12/25 - 1 MÊS"
+   },
+   "836": {
+    "cot": "EQ APOIO",
+    "desc": "ADEVALTON DE CARVALHO DA COSTA (INICIO 17/11/25) ATÉ 08/01/26 - 2 MESES"
+   },
+   "837": {
+    "cot": "EQ APOIO",
+    "desc": "LEANDRO SANTOS NASCIMENTO (INICIO 26/01/26) ATÉ 31/07/27 - 19 MESES"
+   },
+   "838": {
+    "cot": "ASSESS SST",
+    "desc": "WAGNER DA SILVA DUARTE (INICIO 01/12/25) ATÉ 31/12/26 - 14 MESES"
+   },
+   "839": {
+    "cot": "MO SUPEREST",
+    "desc": "LUCIANO PAURA (INICIO 15/01/26) ATÉ 30/04/27 - 16 MESES"
+   },
+   "840": {
+    "cot": "MO SUPEREST",
+    "desc": "SAMUEL DOS SANTOS SILVA (INICIO 26/01/26) ATÉ 24/07/26 - 6 MESES"
+   },
+   "841": {
+    "cot": "MO SUPEREST",
+    "desc": "JORGE AUGUSTO RIBEIRO DE SOUZA (INICIO 26/01/26) ATÉ 30/04/26 - 3 MESES"
+   },
+   "842": {
+    "cot": "MO SUPEREST",
+    "desc": "JOSE CARLOS GOMES DA SILVA (INICIO 26/03/26) ATÉ 08/05/26 - 1 MÊS"
+   },
+   "843": {
+    "cot": "MO SUPEREST",
+    "desc": "EDUARDO MARTINS LEITE (INICIO 30/03/26) ATÉ 13/05/26 - 1 MÊS"
+   },
+   "844": {
+    "cot": "MO SUPEREST",
+    "desc": "LUIZ NAILSON ALVES DE MELO (INICIO 28/04/26) ATÉ 11/06/26 - 1 MÊS"
+   },
+   "845": {
+    "cot": "MO SUPEREST",
+    "desc": "CICERO FRANCISCO DE LIMA (INICIO 08/05/26) ATÉ 21/06/26 - 1 MÊS"
+   },
+   "846": {
+    "cot": "MO SUPEREST",
+    "desc": "RICARDO RODRIGUES FIGUEIREDO (INICIO 22/06/26) ATÉ 31/12/26 - 7 MESES"
+   },
+   "847": {
+    "cot": "MO SUPEREST",
+    "desc": "JEFFERSON LIMA DE SOUSA (INICIO 06/07/26) ATÉ 31/07/27 - 14 MESES"
+   },
+   "848": {
+    "cot": "MO ALVENARIA",
+    "desc": "LUCIANO PAURA (INICIO 15/01/26) ATÉ 30/04/27 - 16 MESES"
+   },
+   "849": {
+    "cot": "MO ALVENARIA",
+    "desc": "SAMUEL DOS SANTOS SILVA (INICIO 26/01/26) ATÉ 24/07/26 - 6 MESES"
+   },
+   "850": {
+    "cot": "MO ALVENARIA",
+    "desc": "JORGE AUGUSTO RIBEIRO DE SOUZA (INICIO 26/01/26) ATÉ 30/04/26 - 3 MESES"
+   },
+   "851": {
+    "cot": "MO ALVENARIA",
+    "desc": "JOSE CARLOS GOMES DA SILVA (INICIO 26/03/26) ATÉ 08/05/26 - 1 MÊS"
+   },
+   "852": {
+    "cot": "MO ALVENARIA",
+    "desc": "EDUARDO MARTINS LEITE (INICIO 30/03/26) ATÉ 13/05/26 - 1 MÊS"
+   },
+   "853": {
+    "cot": "MO ALVENARIA",
+    "desc": "LUIZ NAILSON ALVES DE MELO (INICIO 28/04/26) ATÉ 11/06/26 - 1 MÊS"
+   },
+   "854": {
+    "cot": "MO ALVENARIA",
+    "desc": "CICERO FRANCISCO DE LIMA (INICIO 08/05/26) ATÉ 21/06/26 - 1 MÊS"
+   },
+   "855": {
+    "cot": "MO ALVENARIA",
+    "desc": "RICARDO RODRIGUES FIGUEIREDO (INICIO 22/06/26) ATÉ 31/12/26 - 7 MESES"
+   },
+   "856": {
+    "cot": "MO ALVENARIA",
+    "desc": "JEFFERSON LIMA DE SOUSA (INICIO 06/07/26) ATÉ 31/07/27 - 14 MESES"
+   },
+   "857": {
+    "cot": "CREMALHEIRA",
+    "desc": "ADILSON VALENTIM DA SILVA (INICIO 26/08/24) ATÉ 30/11/26 - 28 MESES"
+   },
+   "858": {
+    "cot": "MINI GRUA",
+    "desc": "TARSIS DE AZEVEDO DOS SANTOS (INICIO 10/11/25) ATÉ 19/05/26 - 6 MESES"
+   },
+   "859": {
+    "cot": "MO ELETRICA",
+    "desc": "MIGUEL DE JESUS BARBOSA (INICIO 02/12/24) ATÉ 31/05/27 - 31 MESES"
+   },
+   "860": {
+    "cot": "MO ELETRICA",
+    "desc": "JENEILDO BRUNO LOPES ROCHA (INICIO 28/10/24) ATÉ 31/05/27 - 32 MESES"
+   },
+   "861": {
+    "cot": "MO ELETRICA",
+    "desc": "PATRICK COSTA DOS SANTOS (INICIO 02/10/25) ATÉ 15/11/25 - 1 MÊS"
+   },
+   "862": {
+    "cot": "MO ELETRICA",
+    "desc": "ALMIR ROGERIO MELO DE CASTRO (INICIO 09/02/26) ATÉ 23/04/26 - 2 MESES"
+   },
+   "863": {
+    "cot": "MO ELETRICA",
+    "desc": "ERICK EDUARDO FRANCISCO LEME (INICIO 25/05/26) ATÉ 31/12/26 - 8 MESES"
+   },
+   "864": {
+    "cot": "MO HIDRAUL",
+    "desc": "ROBERTO LUIS SILVA (INICIO 13/01/25) ATÉ 26/02/25 - 1 MÊS"
+   }
+  }
+ },
+ "cotacoes": {
+  "t41wgd2j8q03t7amdgja": {
+   "atualizadoEm": "2026-10-08T01:25:11.303Z",
+   "desc": "REGULARIZAÇÃO ESTOURO BLOCOS DE CONCRETO",
+   "formula": null,
+   "num": "AD 93",
+   "obs": "Notas acima do PC 781: consumido R$ 529.075,84 × comprado R$ 479.444,35. Registrado pelo site em 07/10/2026.",
+   "ordem": 93.01,
+   "qc": {
+    "confirmadoEm": null,
+    "lancamentos": [
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.01.02",
+      "item": "ALVENARIA DE VEDACAO - E = 09CM - BLOCO DE CONCRETO - MATERIAL",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 166), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 222.37
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.01.04",
+      "item": "ALVENARIA DE VEDACAO - E = 14CM - BLOCO DE CONCRETO - MATERIAL",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 167), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 5001.2
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.01.06",
+      "item": "ALVENARIA DE VEDACAO - E = 14CM - BLOCO DE CONCRETO - MATERIAL |-|-| MURETAS E PLATIBANDAS",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 168), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 211.34
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.03",
+      "item": "ALVENARIA ESTRUTURAL - E = 14CM - BLOCO DE CONCRETO - MATERIAL || FBK=4,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 169), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 7271.66
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.04",
+      "item": "ALVENARIA ESTRUTURAL - E = 14CM - BLOCO DE CONCRETO - MATERIAL || FBK=6,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 170), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 5516.06
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.05",
+      "item": "ALVENARIA ESTRUTURAL - E = 14CM - BLOCO DE CONCRETO - MATERIAL || FBK=8,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 171), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 5798.3
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.06",
+      "item": "ALVENARIA ESTRUTURAL - E = 14CM - BLOCO DE CONCRETO - MATERIAL || FBK=10,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 172), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 6594.62
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.07",
+      "item": "ALVENARIA ESTRUTURAL - E = 14CM - BLOCO DE CONCRETO - MATERIAL || FBK=12,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 173), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 7168.92
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.08",
+      "item": "ALVENARIA ESTRUTURAL - E = 14CM - BLOCO DE CONCRETO - MATERIAL || FBK=14,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 174), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 7222.57
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.09",
+      "item": "ALVENARIA ESTRUTURAL - E = 14CM - BLOCO DE CONCRETO - MATERIAL || FBK=16,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 175), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 4004.73
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.10",
+      "item": "ALVENARIA ESTRUTURAL - E = 19CM - BLOCO DE CONCRETO - MATERIAL || FBK=14,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 176), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 59.11
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.11",
+      "item": "ALVENARIA ESTRUTURAL - E = 19CM - BLOCO DE CONCRETO - MATERIAL || FBK=16,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 177), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 54.89
+     },
+     {
+      "descricao": "BLOCO DE CONCRETO",
+      "eap": "#02.01.04.01.08.02.25",
+      "item": "ALVENARIA ESTRUTURAL - E = 14CM - BLOCO DE CONCRETO - MATERIAL || FBK=4,0MPA |-|-| MURETAS E PLATIBANDAS",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 93 (planilha ID 178), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 505.72
+     }
+    ]
+   },
+   "valor": 49631.49
+  },
+  "xhero95v0iia55xtq4pa": {
+   "atualizadoEm": "2026-10-08T02:26:24.721Z",
+   "desc": "REGULARIZAÇÃO ESTOURO AÇO ESTRUTURA",
+   "formula": null,
+   "num": "AD 88",
+   "obs": "Notas acima do PC 761: consumido R$ 303.400,23 × comprado R$ 292.695,39. Registrado pelo site em 07/10/2026.",
+   "ordem": 88.01,
+   "qc": {
+    "confirmadoEm": null,
+    "lancamentos": [
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.01",
+      "item": "BLOCO DE FUNDACAO | ARMACAO PARA FUNDACAO - ACO CA50 Ø08,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 136), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 406.09
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.02",
+      "item": "BLOCO DE FUNDACAO | ARMACAO PARA FUNDACAO - ACO CA50 Ø10,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 137), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 187.7
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.04",
+      "item": "BLOCO DE FUNDACAO | ARMACAO PARA FUNDACAO - ACO CA50 Ø20,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 138), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 15.04
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.06",
+      "item": "BLOCO DE FUNDACAO | ARMACAO PARA FUNDACAO - ACO CA60 Ø05,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 139), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 0.7
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.12",
+      "item": "LAJE DE PISO | ARMACAO - TAXA DE ACO DE 45 KG/M3",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 140), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 441.66
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.14",
+      "item": "LAJE DE PISO | ARMACAO PARA FUNDACAO - ACO CA50 Ø08,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 141), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 40.67
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.16",
+      "item": "LAJE DE PISO | ARMACAO PARA FUNDACAO - ACO CA60 Ø05,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 142), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 0.7
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.23",
+      "item": "VIGA BALDRAME | ARMACAO PARA FUNDACAO - ACO CA50 Ø06,3MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 143), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 109.52
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.25",
+      "item": "VIGA BALDRAME | ARMACAO PARA FUNDACAO - ACO CA50 Ø08,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 144), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 136.35
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.27",
+      "item": "VIGA BALDRAME | ARMACAO PARA FUNDACAO - ACO CA50 Ø10,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 145), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 224.96
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.29",
+      "item": "VIGA BALDRAME | ARMACAO PARA FUNDACAO - ACO CA50 Ø12,5MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 146), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 182.88
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.31",
+      "item": "VIGA BALDRAME | ARMACAO PARA FUNDACAO - ACO CA50 Ø16,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 147), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 366.64
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.06.02.33",
+      "item": "VIGA BALDRAME | ARMACAO PARA FUNDACAO - ACO CA50 Ø20,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 148), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 326.6
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.07.03.01",
+      "item": "ARMACAO PARA SUPERESTRUTURA (MATERIAL) - ACO CA50 Ø08,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 149), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 1530.98
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.07.03.04",
+      "item": "ARMACAO PARA SUPERESTRUTURA (MATERIAL) - ACO CA50 Ø06,3MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 150), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 823.69
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.07.03.06",
+      "item": "ARMACAO PARA SUPERESTRUTURA (MATERIAL) - ACO CA50 Ø10,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 151), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 480
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.07.03.09",
+      "item": "ARMACAO PARA SUPERESTRUTURA (MATERIAL) - ACO CA50 Ø12,5MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 152), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 157.04
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.07.03.12",
+      "item": "ARMACAO PARA SUPERESTRUTURA (MATERIAL) - ACO CA50 Ø16,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 153), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 127.96
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.07.03.14",
+      "item": "ARMACAO PARA SUPERESTRUTURA (MATERIAL) - ACO CA50 Ø20,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 154), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 8.78
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.07.03.16",
+      "item": "ARMACAO PARA SUPERESTRUTURA (MATERIAL) - ACO CA60 Ø05,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 155), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 374.12
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.07.03.18",
+      "item": "ARMACAO PARA SUPERESTRUTURA (MATERIAL) - TAXA DE ACO DE 60 KG/M3",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 156), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 289.59
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.08.02.12",
+      "item": "ARMACAO PARA ALVENARIA ESTRUTURAL - ACO CA50 Ø06,3MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 157), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 261.87
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.08.02.14",
+      "item": "ARMACAO PARA ALVENARIA ESTRUTURAL - ACO CA50 Ø08,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 158), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 77.7
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.08.02.16",
+      "item": "ARMACAO PARA ALVENARIA ESTRUTURAL - ACO CA50 Ø10,0MM",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 159), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 3023.23
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.08.02.18",
+      "item": "ARMACAO PARA ALVENARIA ESTRUTURAL - TAXA 2,21 KG/M2",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 160), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 1002.88
+     },
+     {
+      "descricao": "AÇO",
+      "eap": "#02.01.04.01.08.02.28",
+      "item": "ARMACAO PARA ALVENARIA ESTRUTURAL - TAXA 2,60 KG/M2 - MURO",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 88 (planilha ID 161), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 107.49
+     }
+    ]
+   },
+   "valor": 10704.84
+  },
+  "73y0q5zi8dxsl6in1lwv": {
+   "atualizadoEm": "2026-10-08T02:25:59.103Z",
+   "desc": "REGULARIZAÇÃO ESTOURO AUTO-BOMBA",
+   "formula": null,
+   "num": "AD 395",
+   "obs": "Notas acima do PC 1078: consumido R$ 80.080,00 × comprado R$ 67.760,00. Registrado pelo site em 07/10/2026.",
+   "ordem": 396.01,
+   "qc": {
+    "confirmadoEm": null,
+    "lancamentos": [
+     {
+      "descricao": "AUTO-BOMBA",
+      "eap": "#02.01.04.01.07.02.01",
+      "item": "CONCRETO PARA SUPERESTRUTURA DE FCK≥ 25MPA (MATERIAL)",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 395 (planilha ID 644), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 6160
+     },
+     {
+      "descricao": "AUTO-BOMBA",
+      "eap": "#02.01.04.01.08.02.17",
+      "item": "ENCHIMENTO ALVENARIA ESTRUTURAL - GRAUTE (TAXA 0,033 M3/M2) || FGK=12,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 395 (planilha ID 645), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": 6160
+     }
+    ]
+   },
+   "valor": 12320
+  },
+  "fiqal19hf4e63vcv1vl8": {
+   "atualizadoEm": "2026-10-08T01:30:07.082Z",
+   "desc": "DEVOLUÇÃO DE SALDO TAMPA DE GRAUTE",
+   "formula": null,
+   "num": "DV 179",
+   "obs": "Cotação 179 encerrada: lançado R$ 21.575,02, consumido R$ 12.725,00 (PC 844 (Cancelado)). Registrado pelo site em 07/10/2026.",
+   "ordem": 179.02,
+   "qc": {
+    "confirmadoEm": null,
+    "lancamentos": [
+     {
+      "descricao": "TAMPA PARA JANELA DE GRAUTE",
+      "eap": "#02.01.04.01.08.02.16",
+      "item": "ENCHIMENTO ALVENARIA ESTRUTURAL - GRAUTE (TAXA 0,033 M3/M2) || FGK=8,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 179 (planilha ID 337), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": -1749.34
+     },
+     {
+      "descricao": "TAMPA PARA JANELA DE GRAUTE",
+      "eap": "#02.01.04.01.08.02.17",
+      "item": "ENCHIMENTO ALVENARIA ESTRUTURAL - GRAUTE (TAXA 0,033 M3/M2) || FGK=12,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 179 (planilha ID 338), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": -1282.26
+     },
+     {
+      "descricao": "TAMPA PARA JANELA DE GRAUTE",
+      "eap": "#02.01.04.01.08.02.18",
+      "item": "ENCHIMENTO ALVENARIA ESTRUTURAL - GRAUTE (TAXA 0,033 M3/M2) || FGK=16,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 179 (planilha ID 339), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": -1282.26
+     },
+     {
+      "descricao": "TAMPA PARA JANELA DE GRAUTE",
+      "eap": "#02.01.04.01.08.02.19",
+      "item": "ENCHIMENTO ALVENARIA ESTRUTURAL - GRAUTE (TAXA 0,033 M3/M2) || FGK=20,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 179 (planilha ID 340), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": -1282.26
+     },
+     {
+      "descricao": "TAMPA PARA JANELA DE GRAUTE",
+      "eap": "#02.01.04.01.08.02.20",
+      "item": "ENCHIMENTO ALVENARIA ESTRUTURAL - GRAUTE (TAXA 0,033 M3/M2) || FGK=24,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 179 (planilha ID 341), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": -1287.64
+     },
+     {
+      "descricao": "TAMPA PARA JANELA DE GRAUTE",
+      "eap": "#02.01.04.01.08.02.21",
+      "item": "ENCHIMENTO ALVENARIA ESTRUTURAL - GRAUTE (TAXA 0,033 M3/M2) || FGK=28,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 179 (planilha ID 342), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": -1281.38
+     },
+     {
+      "descricao": "TAMPA PARA JANELA DE GRAUTE",
+      "eap": "#02.01.04.01.08.02.22",
+      "item": "ENCHIMENTO ALVENARIA ESTRUTURAL - GRAUTE (TAXA 0,033 M3/M2) || FGK=32,0MPA",
+      "itens_qc": [],
+      "motivo": "Mesma linha da cotação 179 (planilha ID 343), proporcional ao lançado: ajuste se o estouro for de um item específico.",
+      "valor": -684.88
+     }
+    ]
+   },
+   "valor": -8850.02
+  }
+ }
+}
