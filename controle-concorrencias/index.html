@@ -162,6 +162,16 @@ dl.kv dd { margin: 0; }
 .mod-s { font-size: .78rem; color: var(--muted); }
 .modbody { display: grid; gap: 18px; }
 .hoje { display: grid; gap: 22px; }
+.ras-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin: 6px 0; }
+.ras-card > summary { cursor: pointer; }
+.ras-doc { border-left: 3px solid var(--line); margin: 10px 0 10px 6px; padding: 2px 0 2px 12px; display: grid; gap: 4px; }
+.ras-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ras-t th, .ras-t td { padding: 3px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.ras-t th.r, .ras-t td.r { text-align: right; }
+.ras-t tfoot td { border-bottom: 0; }
+.ras-fora td { opacity: .6; }
+.ras-plan { margin: 8px 0 2px 6px; }
+.ras-row:hover td { background: rgba(127,127,127,.06); }
 .hoje-g h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .hoje-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .hoje-card { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--line)); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
@@ -194,6 +204,7 @@ dl.kv dd { margin: 0; }
   <!-- Módulos: uma etapa do processo de compra em cada um -->
   <nav class="mods" role="tablist" aria-label="Etapas">
     <button class="mod" type="button" role="tab" data-mod="res" aria-selected="true"><span class="mod-n">R$</span><span class="mod-t"><b>Orçamento × Consumido</b><span class="mod-s" id="mod-s-res">Quanto volta ou falta no orçamento</span></span></button>
+    <button class="mod" type="button" role="tab" data-mod="ras" aria-selected="false"><span class="mod-n">⇢</span><span class="mod-t"><b>Rastreio</b><span class="mod-s">QC → pedido → notas → planilha</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="hoje" aria-selected="false"><span class="mod-n">✓</span><span class="mod-t"><b>O que fazer</b><span class="mod-s" id="mod-s-hoje">Pendências de todas as etapas</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="orc" aria-selected="false"><span class="mod-n">1</span><span class="mod-t"><b>Cotação × Orçamento</b><span class="mod-s" id="mod-s-orc">Lançamento na planilha de orçamento</span></span></button>
     <button class="mod" type="button" role="tab" data-mod="ped" aria-selected="false"><span class="mod-n">2</span><span class="mod-t"><b>Cotação × Pedido / contrato</b><span class="mod-s" id="mod-s-ped">Pedidos e contratos do Sienge</span></span></button>
@@ -207,6 +218,12 @@ dl.kv dd { margin: 0; }
     <div id="res-list"></div>
   </div>
 
+  <div id="mod-ras" class="modbody" hidden>
+    <div class="row modbar"><h2>Rastreio</h2><span class="hint">Uma linha por cotação: o pedido/contrato que ela gerou, as notas desse pedido e o que está na planilha de orçamento.</span></div>
+    <div class="row" style="gap:8px"><input id="ras-q" type="search" placeholder="Nº da cotação, do pedido (781, CT/142), da nota (117773) ou fornecedor" style="flex:1;min-width:220px"><button class="btn" type="button" id="ras-xlsx" hidden>Baixar esta lista (.xlsx)</button></div>
+    <div id="ras-list"></div>
+  </div>
+
   <div id="mod-hoje" class="modbody" hidden>
     <div class="row modbar"><h2>O que fazer</h2><span class="hint">Só o que precisa de você, do maior valor para o menor. O que estiver em dia sai daqui sozinho.</span></div>
     <div id="hoje-list" class="hoje"></div>
@@ -217,6 +234,7 @@ dl.kv dd { margin: 0; }
     <h2>Cotação × Orçamento</h2>
     <div class="row">
       <button class="btn primary" id="btn-copia" type="button">Copiar o que falta lançar</button>
+      <button class="btn" id="btn-idpc" type="button" hidden title="Para preencher a coluna H (pedido/contrato) das linhas que já estão na planilha">Baixar pedidos por ID da planilha (.xlsx)</button>
       <button class="btn" id="btn-falta" type="button" hidden>Baixar o que falta lançar (.xlsx)</button>
     </div>
     <div class="msg" id="top-msg" role="status" style="flex-basis:100%; text-align:right"></div>
@@ -673,7 +691,7 @@ dl.kv dd { margin: 0; }
   }
 
   function renderAll() {
-    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); renderPed(); renderNf(); renderHoje(); renderRes(); updateCheck();
+    compute(); renderSummary(); renderChips(); renderTable(); renderSem(); renderConfInfo(); renderPed(); renderNf(); renderHoje(); renderRes(); if (!$("mod-ras").hidden) renderRas(); updateCheck();
   }
 
   // ---------- formulário ----------
@@ -831,7 +849,8 @@ dl.kv dd { margin: 0; }
   // ---------- módulos ----------
   function selectMod(m) {
     for (const b of document.querySelectorAll(".mod")) b.setAttribute("aria-selected", String(b.dataset.mod === m));
-    for (const n of ["res", "hoje", "orc", "ped", "nf"]) $("mod-" + n).hidden = n !== m;
+    for (const n of ["res", "ras", "hoje", "orc", "ped", "nf"]) $("mod-" + n).hidden = n !== m;
+    if (m === "ras") renderRas();
     if (m === "hoje") renderHoje();
     if (m === "res") renderRes();
   }
@@ -990,7 +1009,7 @@ dl.kv dd { margin: 0; }
       const ls = (x.qc?.lancamentos || []).filter((l) => leafOk(l.eap));
       if (!ls.length) { semSug.push(x.num); continue; }
       if (!x.qc.confirmadoEm) naoConf.add(x.num);
-      linhas.push(sugTsv(ls, x.num));
+      linhas.push(sugTsv(ls, x.num, pcDe(x.id)));
     }
     if (!falta.length) { m.textContent = "Nada para lançar: todas as cotações já estão na planilha de orçamento."; return; }
     const avisos = [];
@@ -999,24 +1018,39 @@ dl.kv dd { margin: 0; }
     if (!linhas.length) { m.className = "msg err"; m.textContent = "Nenhuma cotação pendente tem item da EAP definido. " + avisos.join(". ") + "."; return; }
     const n = linhas.join("\n").split("\n").length;
     copyText(linhas.join("\n"), m).then(() => {
-      if (!m.querySelector("textarea")) m.textContent = `${n} linha(s) copiada(s). Cole na coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre.${avisos.length ? " Atenção: " + avisos.join("; ") + "." : ""}`;
+      if (!m.querySelector("textarea")) m.textContent = `${n} linha(s) copiada(s). Cole na coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre (vai de D a H; H = pedido/contrato).${avisos.length ? " Atenção: " + avisos.join("; ") + "." : ""}`;
     });
   });
 
+  // ID da planilha → pedido/contrato, para preencher a coluna H das linhas já lançadas (PROCV pelo ID)
+  $("btn-idpc").addEventListener("click", async () => {
+    const dl = await claude.use("downloads"); if (!dl) return;
+    const idBy = new Map([...S.cot.entries()].map(([id, c]) => [key(c.num), id]));
+    const out = [["ID", "Nº COTAÇÃO", "PEDIDO / CONTRATO", "FORNECEDOR"]];
+    for (const r of confRows()) {
+      const cid = idBy.get(key(r[0])); const pc = cid ? pcDe(cid) : "";
+      const forn = cid && temDocs() ? [...new Set(elosOf(cid).certos.map((e) => e.doc.forn))].join("; ") : "";
+      out.push([r[4] != null && /^\d+$/.test(String(r[4])) ? Number(r[4]) : r[4], /^\d+$/.test(String(r[0])) ? Number(r[0]) : r[0], pc, forn]);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(out); ws["!cols"] = [{ wch: 8 }, { wch: 12 }, { wch: 24 }, { wch: 40 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "PEDIDO POR ID");
+    try { await dl.save({ filename: `PEDIDO_POR_ID_${new Date().toISOString().slice(0, 10)}.xlsx`, data: new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" })) }); } catch {}
+  });
   $("btn-falta").addEventListener("click", async () => {
     const dl = await claude.use("downloads"); if (!dl) return;
-    const head = ["ITEM", "DESCRIÇÃO DA CONTRATAÇÃO", "Nº COTAÇÃO", "VALOR CONTRATADO", "CÓDIGO EAP", "MACRO ITEM", "SUB ITEM", "OBSERVAÇÃO"];
+    const head = ["ITEM", "DESCRIÇÃO DA CONTRATAÇÃO", "Nº COTAÇÃO", "VALOR CONTRATADO", "PEDIDO / CONTRATO", "CÓDIGO EAP", "MACRO ITEM", "SUB ITEM", "OBSERVAÇÃO"];
     const out = [head];
     const falta = D.rows.filter((x) => x.st === "FALTA LANÇAR").sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
     for (const x of falta) {
       const num = /^\d+$/.test(x.num) ? Number(x.num) : x.num;
       const ls = x.qc?.lancamentos || [];
-      if (!ls.length) { out.push(["", x.desc, num, x.valor, "", "", "", "Sem sugestão de item da EAP: escolha o item na planilha"]); continue; }
-      for (const l of ls) { const p = eapPath(l.eap); out.push([l.item, l.descricao, num, Number(l.valor) || 0, l.eap, p.macro, p.sub, x.qc.confirmadoEm ? "" : "Sugestão não confirmada"]); }
+      const pc = pcDe(x.id);
+      if (!ls.length) { out.push(["", x.desc, num, x.valor, pc, "", "", "", "Sem sugestão de item da EAP: escolha o item na planilha"]); continue; }
+      for (const l of ls) { const p = eapPath(l.eap); out.push([l.item, l.descricao, num, Number(l.valor) || 0, pc, l.eap, p.macro, p.sub, x.qc.confirmadoEm ? "" : "Sugestão não confirmada"]); }
     }
     if (out.length === 1) { setMsg("Nada para lançar: todas as cotações já estão na planilha de orçamento."); return; }
     const ws = XLSX.utils.aoa_to_sheet(out);
-    ws["!cols"] = [{ wch: 50 }, { wch: 40 }, { wch: 12 }, { wch: 16 }, { wch: 24 }, { wch: 40 }, { wch: 40 }, { wch: 40 }];
+    ws["!cols"] = [{ wch: 50 }, { wch: 40 }, { wch: 12 }, { wch: 16 }, { wch: 18 }, { wch: 24 }, { wch: 40 }, { wch: 40 }, { wch: 40 }];
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "FALTA LANÇAR");
     try { await dl.save({ filename: `FALTA_LANCAR_${new Date().toISOString().slice(0, 10)}.xlsx`, data: new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" })) }); } catch {}
   });
@@ -1120,8 +1154,16 @@ dl.kv dd { margin: 0; }
 
   // Linhas no formato da aba LANÇAMENTOS (colunas D a G): ITEM, DESCRIÇÃO DA CONTRATAÇÃO, Nº COTAÇÃO, VALOR
   const plain = (v) => (Math.round(v * 100) / 100).toFixed(2).replace(".", ",");
-  function sugTsv(lancs, numero) {
-    return lancs.map((l) => [l.item, l.descricao, numero, plain(l.valor)].map((c) => String(c ?? "").replace(/[\t\n]/g, " ")).join("\t")).join("\n");
+  function sugTsv(lancs, numero, pc = "") {
+    return lancs.map((l) => [l.item, l.descricao, numero, plain(l.valor), pc].map((c) => String(c ?? "").replace(/[\t\n]/g, " ")).join("\t")).join("\n");
+  }
+  // pedido/contrato da cotação para a coluna H da aba LANÇAMENTOS (aditivo/devolução usam os da cotação original)
+  function pcDe(cid) {
+    if (!temDocs()) return "";
+    const ids = (c) => elosOf(c).certos.filter((e) => !e.fd).map((e) => e.doc.id);
+    let r = ids(cid);
+    if (!r.length) { const o = origemDe(S.cot.get(cid)?.num || ""); const orig = o && [...S.cot.entries()].find(([, c]) => key(c.num) === key(o.orig)); if (orig) r = ids(orig[0]); }
+    return r.join(", ");
   }
   const leafOk = (code) => { const e = eapMap().get(code); return !!e && isLeaf(code); };
   // Macro = EAP mãe (#02.01.04.01.25), sub = (#02.01.04.01.25.02), como as colunas B e C da aba LANÇAMENTOS
@@ -1217,7 +1259,7 @@ dl.kv dd { margin: 0; }
     if (act === "copy" || act === "xlsx") {
       const src = sugSource(ctx) || [];
       if (src.some((l) => !leafOk(l.eap))) return bad();
-      if (act === "copy") copyText(sugTsv(src, numero), msg); else sugXlsx(src, numero, msg);
+      if (act === "copy") copyText(sugTsv(src, numero, isQ(ctx) ? "" : pcDe(ctx)), msg); else sugXlsx(src, numero, msg);
       return;
     }
     if (act === "undo") { delete S.sugDraft[ctx]; rerenderSug(ctx); return; }
@@ -2210,6 +2252,7 @@ ${eap.txt}`;
     box.innerHTML = tbl(["Cotação", "Orçamento (lançado)", "Comprado", "Consumido", col[S.resF] || ""], rows.map((x) =>
       `<tr><td><b class="num">${esc(x.c.num)}</b> ${esc(x.c.desc)}<div class="hint">${esc(forn(x)) || "&nbsp;"}</div>` +
       (x.nada ? `<div class="qc-warn" style="margin-top:4px">Pedido cancelado sem entrega. Se a compra foi refeita em outro pedido, vincule-o à cotação (módulo 2); se não houve compra, o valor volta ao orçamento.</div>` : "") +
+      `<div><button class="btn" type="button" data-ras="${esc(x.c.num)}" style="padding:2px 10px;font-size:12px">ver rastreio</button></div>` +
       (x.rep ? `<div class="hint">Nº ${esc(x.c.num)} usado em mais de uma cotação: lançado dividido pelo valor aprovado.</div>` : "") +
       (origemDe(x.c.num) ? `<div class="hint">${origemDe(x.c.num).tipo === "AD" ? "aditivo" : "devolução"} da cotação ${esc(origemDe(x.c.num).orig)}</div>` : filhosDe(x.c.num).filter((f) => f.valor > 0).map((f) => `<div class="hint">+ ${esc(f.num)} ${fmt(f.valor)}${f.lanc ? " (lançado)" : " (falta lançar)"}</div>`).join("")) +
       (x.dvPend?.length ? `<div class="hint" style="color:var(--ok)">Devolução registrada (${x.dvPend.map((d) => esc(d.num) + " " + fmt(d.valor)).join(", ")}): falta lançar na planilha.</div>` :
@@ -2295,6 +2338,104 @@ ${eap.txt}`;
     const ws = XLSX.utils.aoa_to_sheet(out); ws["!cols"] = [{ wch: 12 }, { wch: 40 }, { wch: 36 }, { wch: 36 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 20 }, { wch: 14 }, { wch: 60 }];
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, nome.slice(0, 30));
     try { await dl.save({ filename: `ORCAMENTO_X_CONSUMIDO_${nome}_${new Date().toISOString().slice(0, 10)}.xlsx`, data: new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" })) }); } catch {}
+  });
+
+  // ---------- Rastreio: cotação (QC) → pedidos/contratos → notas → linhas da planilha ----------
+  function rasDocHtml(d, cotNum) {
+    const n = S.nfMeta && temDocs() ? nfAnalise().linhas.find((x) => x.d.id === d.d.id) : null;
+    const tits = (n?.tits || []).slice().sort((a, b) => parseDate(a.r[5]) - parseDate(b.r[5]) || String(a.r[2]).localeCompare(String(b.r[2])));
+    const nk = (s) => [...toks(String(s).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" "), meu = nk(d.d.forn);
+    const tot = Math.round(tits.filter((t) => t.tipo !== "GUIA" && t.tipo !== "CAU").reduce((s, t) => s + t.parte, 0) * 100) / 100;
+    const ent = d.d.sec || 0, lbl = d.d.tipo === "CT" ? "medido" : "entregue";
+    const notas = tits.length ? `<table class="ras-t"><thead><tr><th>Nota</th><th>Emissão</th><th>Fornecedor da nota</th><th>Origem</th><th class="r">Valor</th></tr></thead><tbody>` +
+      tits.map((t) => `<tr${t.tipo === "GUIA" || t.tipo === "CAU" ? ' class="ras-fora"' : ""}><td class="num">${esc(t.r[2])}</td><td class="num">${esc(t.r[5])}</td>` +
+        `<td>${esc(t.r[1].replace(/^\d+\s*-\s*/, ""))}${nk(t.r[1]) !== meu ? ' <span class="pill s-AGUARDANDO">outro fornecedor</span>' : ""}${t.finOk ? ' <span class="pill s-OK">financeiro, confirmada por você</span>' : t.viaEx ? ' <span class="hint">(pelo extrato)</span>' : ""}</td>` +
+        `<td class="hint">${t.tipo === "GUIA" ? "guia de imposto" : t.tipo === "CAU" ? "caução" : esc(ORIG[t.r[3]] || t.r[3])}${t.junto ? ` · dividida com ${esc(t.junto.join(", "))}` : ""}</td>` +
+        `<td class="r num">${fmt(t.parte)}${t.junto ? `<div class="hint">nota ${fmt(t.r[7])}</div>` : ""}</td></tr>`).join("") +
+      `</tbody><tfoot><tr><td colspan="4"><b>${tits.filter((t) => t.tipo !== "GUIA" && t.tipo !== "CAU").length} notas</b> · ${lbl} ${fmt(ent)} · ${d.d.tipo === "CT" ? "contrato" : "pedido"} ${fmt(d.d.prim)}</td><td class="r num"><b>${fmt(tot)}</b></td></tr></tfoot></table>`
+      : `<div class="hint">${S.nfMeta ? "Nenhuma nota lançada neste " + (d.d.tipo === "CT" ? "contrato" : "pedido") + "." : "Importe o relatório de notas (Títulos por Data) no módulo 3."}</div>`;
+    const ex = d.d.tipo === "CT" ? exRows().find((c) => c[0] === d.d.id) : null;
+    return `<div class="ras-doc"><div><b>${esc(d.d.id)}</b> · ${esc(d.d.forn)} · ${esc(d.d.data)} · <span class="pill ${sitCls(d.d.sit)}">${esc(d.d.sit)}</span></div>` +
+      `<div class="hint">${d.d.tipo === "CT" ? "Contratado" : "Pedido"} <b class="num">${fmt(d.d.prim)}</b>${d.f < 0.999 ? ` (desta cotação ${fmt(d.parte ?? d.d.prim * d.f)})` : ""} · ${lbl} <b class="num">${fmt(ent)}</b> · notas <b class="num">${fmt(tot)}</b>` +
+      `${tot > Math.max(d.d.prim, ent) + 1 ? ` · <span class="neg">notas passam do ${d.d.tipo === "CT" ? "contrato" : "pedido"} em ${fmt(tot - Math.max(d.d.prim, ent))}</span>` : ""}</div>` +
+      itensBox(d.d) +
+      (ex ? `<details><summary class="hint">${ex[6].length} medições · liberado ${fmt(ex[10])}${ex[9] ? ` · caução ${fmt(ex[9])}` : ""}${ex[5] ? ` · aditivos: ${esc(ex[5])}` : ""}</summary>${ex[6].map((m) => `<div class="hint">Medição ${m[0]} · ${esc(m[1])} · <span class="num">${fmt(m[4])}</span></div>`).join("")}</details>` : "") +
+      notas + `</div>`;
+  }
+  function rasCard(x, aberto) {
+    const sit = x.sit === "enc" ? `<span class="pill s-OK">encerrada</span>` : x.sit === "and" ? `<span class="pill s-AGUARDANDO">em andamento</span>` : `<span class="pill s-FALTA">sem pedido/contrato</span>`;
+    const res = x.sit === "enc" ? (Math.abs(x.ajuste) < Math.max(1, (x.c.lanc || 0) * 0.005) ? `<b>fechou certinho</b>` : x.ajuste > 0 ? `<b style="color:var(--ok)">devolver ${fmt(x.ajuste)} ao orçamento</b>` : `<b class="neg">acrescentar ${fmt(-x.ajuste)} ao orçamento</b>`)
+      : x.sit === "and" ? (x.aConsumir < 0 ? `<b class="neg">já passou ${fmt(-x.aConsumir)} do comprado</b>` : `falta consumir ${fmt(x.aConsumir)}`) : (x.j ? esc(JUST[x.j.motivo] || x.j.motivo) : "sem pedido");
+    const fs = filhosDe(x.c.num);
+    return `<details class="ras-card"${aberto ? " open" : ""}><summary><b class="num">QC ${esc(x.c.num)}</b> ${esc(x.c.desc)} · ${sit}` +
+      `<div class="hint" style="margin-left:18px">aprovado ${fmt(x.c.valor)} · lançado ${fmt(x.c.lanc)} · comprado ${x.docs.length ? fmt(x.comprado) : "—"} · consumido ${x.docs.length ? fmt(x.consumido) : "—"} → ${res}</div></summary>` +
+      (x.c.obs ? `<div class="hint">Obs.: ${esc(x.c.obs)}</div>` : "") +
+      (fs.length ? `<div class="hint">${fs.map((f) => `${esc(f.num)} ${fmt(f.valor)}${f.lanc ? " (lançado)" : " (falta lançar)"}`).join(" · ")}</div>` : "") +
+      (x.docs.length ? x.docs.map((d) => rasDocHtml(d, x.c.num)).join("") : `<div class="hint">Nenhum pedido ou contrato ligado.</div>`) +
+      `<div class="ras-plan"><b>Planilha de orçamento</b>${x.linhas.length ? x.linhas.map((l) => `<div class="hint">ID ${esc(l[4] ?? "")} · ${esc(l[2] || "")} · ${esc(l[3] || "")} · <span class="num">${fmt(l[1])}</span></div>`).join("") : `<div class="hint neg">Não está na planilha.</div>`}</div></details>`;
+  }
+  // uma linha por cotação: QC · fornecedor · PC/CT · notas · valores; clique abre o caminho completo
+  S.rasOpen = null;
+  function rasRows() {
+    const q = fold($("ras-q").value.trim()), R = resRows(), A = S.nfMeta && temDocs() ? nfAnalise() : null;
+    const linhaDe = new Map((A?.linhas || []).map((x) => [x.d.id, x]));
+    const notasDe = (id) => (linhaDe.get(id)?.tits || []).filter((t) => t.tipo !== "GUIA" && t.tipo !== "CAU");
+    const qn = q.replace(/^(PC|QC)\s*/, "");
+    const hitDoc = (d) => fold(`${d.id} ${d.forn}`).includes(q) || (/^\d+$/.test(qn) && d.tipo === "PC" && String(d.num) === qn) || (qn.length >= 4 || !/^\d+$/.test(qn)) && notasDe(d.id).some((t) => fold(`${t.r[2]} ${t.r[1]}`).includes(q));
+    const rows = R.filter((x) => !q || fold(`${x.c.num} ${x.c.desc}`).includes(qn) || key(x.c.num) === key(qn) || x.docs.some((d) => hitDoc(d.d)))
+      .map((x) => ({ x, notas: x.docs.flatMap((d) => notasDe(d.d.id).map((t) => ({ ...t, doc: d.d.id }))) }))
+      .sort((a, b) => (key(b.x.c.num) === key(qn)) - (key(a.x.c.num) === key(qn)) || (a.x.c.ordem ?? 0) - (b.x.c.ordem ?? 0));
+    const usados = new Set(R.flatMap((x) => x.docs.map((d) => d.d.id)));
+    const soltos = q && temDocs() ? elosAll().docs.filter((d) => !usados.has(d.id) && hitDoc(d)) : [];
+    return { rows, soltos };
+  }
+  function renderRas() {
+    const box = $("ras-list"); if (!box || !S.loadedCot) return;
+    const { rows, soltos } = rasRows(); S.rasView = rows;
+    const LIM = S.rasAll ? rows.length : 150;
+    const notasTxt = (ns) => !ns.length ? "—" : ns.length <= 3 ? ns.map((t) => esc(t.r[2].replace(/\s+/g, ""))).join(", ") : `${esc(ns[0].r[2].replace(/\s+/g, ""))} … ${esc(ns[ns.length - 1].r[2].replace(/\s+/g, ""))} <span class="hint">(${ns.length} notas)</span>`;
+    const res = (x) => x.sit === "enc" ? (Math.abs(x.ajuste) < Math.max(1, (x.c.lanc || 0) * 0.005) ? `<span class="pill s-OK">fechou</span>` : x.ajuste > 0 ? `<b style="color:var(--ok)">devolver ${fmt(x.ajuste)}</b>` : `<b class="neg">acrescentar ${fmt(-x.ajuste)}</b>`)
+      : x.sit === "and" ? (x.aConsumir < -Math.max(1, x.comprado * 0.005) ? `<b class="neg">passou ${fmt(-x.aConsumir)}</b>` : `<span class="hint">em aberto: falta ${fmt(Math.max(0, x.aConsumir))}</span>`) : `<span class="pill s-FALTA">${x.j ? "justificada" : "sem pedido"}</span>`;
+    // colunas pedidas: QC · descrição · aprovado no e-mail · orçamento · pedido/contrato · notas lançadas no pedido · resultado
+    const orc = (x) => x.c.lanc ? `<span class="num">${fmt(x.c.lanc)}</span>${Math.abs(x.c.lanc - (x.c.valor || 0)) >= 1 ? `<div class="hint">≠ aprovado</div>` : ""}` : `<span class="neg">não lançado</span>`;
+    const ped = (x) => !x.docs.length ? `<span class="neg">sem pedido</span>` : x.docs.map((d) => `<div><b class="num">${esc(d.d.id)}</b> <span class="num">${fmt(d.d.prim)}</span>${d.parte != null && Math.abs(d.parte - d.d.prim) >= 1 ? `<span class="hint"> (desta cotação ${fmt(d.parte)})</span>` : ""}<div class="hint">${esc(d.d.forn)} · ${esc(d.d.sit)}</div></div>`).join("");
+    const nfs = (x, notas) => !x.docs.length ? "—" : x.docs.map((d) => {
+      const ns = notas.filter((n) => n.doc === d.d.id), tot = ns.reduce((t, n) => t + n.parte, 0), acima = tot > d.d.prim + Math.max(1, d.d.prim * 0.005);
+      return `<div>${ns.length ? `<b>${ns.length} nota${ns.length > 1 ? "s" : ""}</b> · <span class="num${acima ? " neg" : ""}">${fmt(tot)}</span>${acima ? `<div class="hint neg">passou do pedido em ${fmt(tot - d.d.prim)}</div>` : ""}` : `<span class="hint">nenhuma nota</span>`}</div>`;
+    }).join("");
+    let h = tbl(["QC", "Descrição", "Aprovado", "Orçamento", "Pedido / contrato", "Notas no pedido", "Resultado"], rows.slice(0, LIM).map(({ x, notas }) => {
+      const linha = `<tr class="ras-row" data-rasopen="${esc(x.c.id)}" style="cursor:pointer"><td><b class="num">${esc(x.c.num)}</b></td><td>${esc(x.c.desc)}</td><td class="r num">${fmt(x.c.valor)}</td><td class="r">${orc(x)}</td>` +
+        `<td>${ped(x)}</td><td>${nfs(x, notas)}</td><td class="r">${res(x)}</td></tr>`;
+      return linha + (S.rasOpen === x.c.id ? `<tr class="detail"><td colspan="7">${rasCard(x, true)}</td></tr>` : "");
+    }), "Nada encontrado.");
+    if (rows.length > LIM) h += `<div class="row" style="margin-top:8px"><button class="btn" type="button" id="ras-all">Mostrar todas (${rows.length})</button></div>`;
+    if (soltos.length) h += `<h2 style="margin:14px 0 8px">Pedidos/contratos sem cotação</h2>` + soltos.slice(0, 20).map((d) => `<details class="ras-card"><summary><b>${esc(d.id)}</b> ${esc(d.forn)} · <span class="pill s-FALTA">sem cotação</span></summary>${rasDocHtml({ d, f: 1, parte: null }, "")}</details>`).join("");
+    box.innerHTML = `<div class="hint" style="margin-bottom:6px">${rows.length} cotação(ões). Clique na linha para ver o caminho completo.</div>` + h;
+  }
+  $("ras-list").addEventListener("click", (ev) => {
+    if (ev.target.closest("#ras-all")) { S.rasAll = true; renderRas(); return; }
+    if (ev.target.closest(".detail, details, button, a, input")) return;
+    const r = ev.target.closest("[data-rasopen]"); if (!r) return;
+    S.rasOpen = S.rasOpen === r.dataset.rasopen ? null : r.dataset.rasopen; renderRas();
+  });
+  $("ras-xlsx").addEventListener("click", async () => {
+    const dl = await claude.use("downloads"); if (!dl) return;
+    const out = [["Nº COTAÇÃO", "DESCRIÇÃO", "FORNECEDOR", "PEDIDO / CONTRATO", "SITUAÇÃO DO PEDIDO", "NOTAS FISCAIS", "QTD NOTAS", "VALOR DAS NOTAS", "APROVADO", "LANÇADO NO ORÇAMENTO", "COMPRADO", "CONSUMIDO", "RESULTADO", "VALOR DO RESULTADO", "IDs NA PLANILHA"]];
+    for (const { x, notas } of S.rasView || []) {
+      const r = x.sit === "enc" ? (Math.abs(x.ajuste) < 1 ? ["Fechou", 0] : x.ajuste > 0 ? ["Devolver ao orçamento", x.ajuste] : ["Acrescentar ao orçamento", -x.ajuste]) : x.sit === "and" ? (x.aConsumir < -1 ? ["Em andamento: já passou do comprado", -x.aConsumir] : ["Em andamento: falta consumir", x.aConsumir]) : [x.j ? "Sem pedido (justificada)" : "Sem pedido", null];
+      out.push([/^\d+$/.test(x.c.num) ? Number(x.c.num) : x.c.num, x.c.desc, [...new Set(x.docs.map((d) => d.d.forn))].join("; "), x.docs.map((d) => d.d.id).join("; "), x.docs.map((d) => d.d.sit).join("; "),
+        notas.map((t) => t.r[2].replace(/\s+/g, "")).join("; "), notas.length, Math.round(notas.reduce((t, n) => t + n.parte, 0) * 100) / 100,
+        x.c.valor, x.c.lanc || 0, x.docs.length ? x.comprado : null, x.docs.length ? x.consumido : null, r[0], r[1], x.linhas.map((l) => l[4]).join("; ")]);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(out); ws["!cols"] = [{ wch: 12 }, { wch: 36 }, { wch: 30 }, { wch: 18 }, { wch: 20 }, { wch: 50 }, { wch: 8 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "RASTREIO");
+    try { await dl.save({ filename: `RASTREIO_QC_PEDIDO_NOTAS_${new Date().toISOString().slice(0, 10)}.xlsx`, data: new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" })) }); } catch {}
+  });
+  $("ras-q").addEventListener("input", () => renderRas());
+  // atalho a partir de outras telas: botão "ver rastreio"
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-ras]"); if (!b) return;
+    $("ras-q").value = b.dataset.ras; selectMod("ras"); window.scrollTo(0, 0);
   });
 
   // ---------- O que fazer: pendências das 3 etapas, por onde agir ----------
@@ -2872,7 +3013,7 @@ ${eap.txt}`;
     }
     S.db = db;
     $("btn-save").disabled = false;
-    claude.use("downloads").then((dl) => { if (dl) { $("btn-export").hidden = false; $("btn-falta").hidden = false; $("res-xlsx").hidden = false; } });
+    claude.use("downloads").then((dl) => { if (dl) { $("btn-export").hidden = false; $("btn-falta").hidden = false; $("res-xlsx").hidden = false; $("ras-xlsx").hidden = false; $("btn-idpc").hidden = false; } });
     claude.use("sample").then((sm) => { if (sm) $("qc-panel").hidden = false; });
     let first = true;
     db.collection("cotacoes").limit(1000).onSnapshot((snap) => {
