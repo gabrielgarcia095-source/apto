@@ -1914,7 +1914,8 @@ ${eap.txt}`;
     const lbl2 = d.tipo === "CT" ? "medido" : "entregue";
     return `<b>${esc(d.id)}</b> · ${esc(d.forn)} · ${esc(d.data)} · <span class="num">${fmt(d.prim)}</span>` +
       ` <span class="hint">(${lbl2} <span class="num">${fmt(d.sec)}</span>)</span> <span class="pill ${sitCls(d.sit)}">${esc(d.sit)}</span>` +
-      (semEntrega(d) ? ` <span class="pill s-DIVERGENCIA">nada ${lbl2}</span>` : saldoCanc(d) > 0.009 ? ` <span class="hint neg">saldo cancelado ${fmt(saldoCanc(d))}</span>` : "") + itensBox(d);
+      (semEntrega(d) ? ` <span class="pill s-DIVERGENCIA">nada ${lbl2}</span>` : saldoCanc(d) > 0.009 ? ` <span class="hint neg">saldo cancelado ${fmt(saldoCanc(d))}</span>` : "") +
+      (d.soPdf ? ` <span class="pill s-DIVERGENCIA" title="Não sai na Relação de Pedidos de Compra: no Sienge o pedido está incompleto (parcelas da Previsão Financeira diferentes do total). Os valores são do último relatório de saldo de pedidos.">incompleto no Sienge</span>` : "") + itensBox(d);
   }
   // itens do pedido (relatório "Relação de Pedidos de Compra"): [nº, data, comprador, frete, outras, desconto, total, [[insumo, qtd, un, preço, valor, qt entregue]], fornecedor, entregue, pendente, aprovado (false = "Autorização: Não")]
   function itensOf(d) {
