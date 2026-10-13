@@ -111,6 +111,14 @@ tr.people > td { padding: 0 0 10px 26px; background: var(--row-hover); }
 .pill.bad { background: var(--bad-bg); color: var(--bad); }
 .pill.extra { background: var(--extra-soft); color: var(--extra); }
 .pill.none { background: var(--none-bg); color: var(--none); }
+.p input.pv { width: 18px; height: 18px; accent-color: var(--accent); flex: none; cursor: pointer; margin: 0; }
+.p .pv-sp { width: 18px; flex: none; }
+.p label.who { cursor: pointer; }
+.p.off .who b { color: var(--muted); font-weight: 500; }
+.pill.plan { background: var(--accent-soft); color: var(--accent); }
+.grpact { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding-top: 8px; font-size: .85rem; }
+.plan { gap: 10px; }
+input[type=date] { border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 5px 8px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips button { border-radius: 99px; padding: 4px 12px; font-size: .85rem; }
 .chips button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -135,10 +143,10 @@ tr.people > td { padding: 0 0 10px 26px; background: var(--row-hover); }
 .cadgrp { display: grid; gap: 6px; }
 .cadgrp + .cadgrp { border-top: 1px solid var(--line); padding-top: 14px; }
 .cadhead { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
-.cadrow { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) 90px auto; gap: 8px; align-items: center; }
+.cadrow { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) auto; gap: 8px; align-items: center; }
 .cadrow input[type=text] { width: 100%; }
 .cadrow .cpf { font-size: .75rem; color: var(--muted); }
-@media (max-width: 640px) { .cadrow { grid-template-columns: minmax(0, 1fr) 84px; } .cadrow .func { grid-column: 1 / -1; grid-row: 2; } }
+@media (max-width: 640px) { .cadrow { grid-template-columns: minmax(0, 1fr) auto; } .cadrow .func { grid-column: 1 / -1; grid-row: 2; } }
 textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); font-size: .8rem; border: 1px solid var(--line); border-radius: 7px; padding: 8px; background: var(--panel); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -183,6 +191,18 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
       </div>
       <span class="muted" id="day-info"></span>
     </div>
+    <div class="panel plan" id="plan">
+      <div>
+        <h2>Quem está previsto neste dia</h2>
+        <div class="muted">Abra o fornecedor na tabela e marque a caixa de quem vem. Um dia novo já começa com o previsto do dia anterior, então basta ajustar quem mudou.</div>
+      </div>
+      <div class="row" id="plan-acts"></div>
+      <div class="row">
+        <label for="plan-date" class="muted">Planejar outro dia:</label>
+        <input type="date" id="plan-date">
+        <button type="button" id="plan-new">Abrir dia</button>
+      </div>
+    </div>
     <div class="tiles" id="tiles"></div>
     <div class="panel">
       <div class="row" style="justify-content:space-between">
@@ -217,7 +237,7 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
       <div class="row" style="justify-content:space-between">
         <div>
           <h2>Cadastro de pessoas</h2>
-          <div class="muted">“Previsto = Sim” entra na conta do dia. Mudanças valem para o último dia importado e os próximos.</div>
+          <div class="muted">Nomes, funções e fornecedores. Quem está previsto é marcado em cada dia, na aba Dia.</div>
         </div>
         <form class="row" id="add-forn">
           <input type="text" id="new-forn" placeholder="Novo fornecedor" aria-label="Novo fornecedor">
@@ -240,7 +260,7 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
   const uid = () => "p" + Math.random().toString(36).slice(2, 9);
   const fmtDia = (k) => { const [y, m, d] = k.split("-"); return `${d}/${m}/${y}`; };
   const semana = (k) => ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][new Date(k + "T12:00:00").getDay()];
-  const S = { db: null, cad: null, dias: new Map(), dia: null, tab: "dia", open: new Set(), filtro: "todos", busca: "", vazios: false, pending: null, loaded: false };
+  const S = { db: null, cad: null, dias: new Map(), dia: null, tab: "dia", open: new Set(), filtro: "todos", busca: "", vazios: false, loaded: false };
 
   // ---------- leitura das planilhas ----------
   function serialToParts(v) {
@@ -318,15 +338,15 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
     const cad = S.cad || { fornecedores: [], pessoas: [] };
     const byCpf = new Map(), byNome = new Map();
     for (const r of d.registros) { if (r.c) byCpf.set(r.c, r); byNome.set(norm(r.n), r); }
-    const usados = new Set(), prev = d.prev ? new Set(d.prev) : null;
+    const usados = new Set(), prev = new Set(d.prev || prevBase(d.dia) || []);
     const grupos = new Map(cad.fornecedores.map((f) => [f, { nome: f, pessoas: [] }]));
     const grp = (f) => { if (!grupos.has(f)) grupos.set(f, { nome: f, pessoas: [], novo: true }); return grupos.get(f); };
     for (const p of cad.pessoas) {
       const r = (p.cpf && byCpf.get(p.cpf)) || byNome.get(norm(p.nome));
       if (r) usados.add(r);
-      const previsto = prev ? prev.has(p.id) : !!p.previsto;
+      const previsto = prev.has(p.id);
       const st = r ? (previsto ? "ok" : "extra") : (previsto ? "falta" : "none");
-      grp(p.fornecedor).pessoas.push({ p, r, st, nome: p.nome, funcao: p.funcao });
+      grp(p.fornecedor).pessoas.push({ p, r, st, prev: previsto, nome: p.nome, funcao: p.funcao });
     }
     for (const r of d.registros) {
       if (usados.has(r)) continue;
@@ -352,16 +372,41 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
     if (!S.db) { msg.className = "msg err"; msg.textContent = "Abra esta página no claude.ai com a sua conta para salvar o relatório."; return; }
     const partes = [];
     try {
+      let prevPlanilha = null;
       if (cad) {
-        if (!S.cad || !S.cad.pessoas.length) { await salvarCad(cad); partes.push(`cadastro com ${cad.pessoas.length} pessoas em ${cad.fornecedores.length} fornecedores`); }
-        else S.pending = { cad, arquivo: file.name };
+        const m = mergeCad(cad); prevPlanilha = m.ids;
+        await salvarCad(m.next);
+        partes.push(`previsto da planilha: ${m.ids.length} pessoas` + (m.novos ? ` (${m.novos} novas no cadastro)` : ""));
       }
-      if (regs) partes.push(await salvarRegistros(regs, file.name));
+      if (regs) partes.push(await salvarRegistros(regs, file.name, prevPlanilha));
+      else if (prevPlanilha && S.dia) { await setPrevDia(S.dia, (set) => { set.clear(); prevPlanilha.forEach((id) => set.add(id)); }); partes.push("aplicado em " + fmtDia(S.dia)); }
       msg.className = "msg ok"; msg.textContent = "Importado: " + partes.join(" · ") + ".";
     } catch (e) { msg.className = "msg err"; msg.textContent = "Não foi possível salvar: " + (e?.message || e); }
-    renderPending(); render();
+    render();
   }
-  async function salvarRegistros(regs, arquivo) {
+  // junta o cadastro da planilha ao do site: atualiza quem já existe (mesmo id e histórico), acrescenta quem é novo, não apaga ninguém
+  function mergeCad(cad) {
+    const base = S.cad ? structuredClone(S.cad) : { fornecedores: [], pessoas: [], obra: "" };
+    const fornDe = (nome) => base.fornecedores.find((x) => norm(x) === norm(nome)) || nome;
+    for (const f of cad.fornecedores) if (!base.fornecedores.some((x) => norm(x) === norm(f))) base.fornecedores.push(f);
+    const byNome = new Map(base.pessoas.map((p) => [norm(p.nome), p]));
+    const ids = []; let novos = 0;
+    for (const p of cad.pessoas) {
+      let e = byNome.get(norm(p.nome));
+      if (!e) { e = { ...p }; base.pessoas.push(e); byNome.set(norm(p.nome), e); novos++; }
+      else if (p.funcao) e.funcao = p.funcao;
+      e.fornecedor = fornDe(p.fornecedor); e.previsto = p.previsto;
+      if (p.previsto) ids.push(e.id);
+    }
+    return { next: base, ids, novos };
+  }
+  // previsto de um dia novo: o do dia anterior mais próximo (ou o do cadastro, no primeiro dia)
+  function prevBase(dia) {
+    const ant = [...S.dias.keys()].sort().filter((k) => k < dia && S.dias.get(k).prev).pop();
+    if (ant) return [...S.dias.get(ant).prev];
+    return S.cad ? S.cad.pessoas.filter((p) => p.previsto).map((p) => p.id) : null;
+  }
+  async function salvarRegistros(regs, arquivo, prevPlanilha) {
     const porDia = new Map(); let negados = 0;
     for (const r of regs) {
       if (r.acao && r.acao !== "CONCEDIDO" && r.acao !== "LIBERADO") { negados++; continue; }
@@ -377,11 +422,11 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
       let mudou = false; const pessoas = S.cad.pessoas.map((p) => { const c = !p.cpf && byNome.get(norm(p.nome)); if (c) { mudou = true; return { ...p, cpf: c }; } return p; });
       if (mudou) await salvarCad({ ...S.cad, pessoas });
     }
-    const prevAtual = S.cad ? S.cad.pessoas.filter((p) => p.previsto).map((p) => p.id) : null;
     for (const dia of dias) {
       const antigo = S.dias.get(dia);
       const doc = { dia, arquivo, importadoEm: new Date().toISOString(), obra, registros: [...porDia.get(dia).values()].sort((a, b) => a.n.localeCompare(b.n, "pt-BR")) };
-      if (antigo?.prev) doc.prev = antigo.prev; else if (prevAtual) doc.prev = prevAtual;
+      const prev = prevPlanilha || antigo?.prev || prevBase(dia);
+      if (prev) doc.prev = prev;
       await S.db.doc("dias/" + dia).set(doc);
       S.dias.set(dia, doc);
     }
@@ -391,46 +436,34 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
     return `${tot} pessoas na catraca em ${dias.length === 1 ? fmtDia(dias[0]) : dias.length + " dias"}` + (negados ? ` (${negados} acessos negados ignorados)` : "");
   }
 
-  // ---------- gravação do cadastro (uma por vez) ----------
+  // ---------- gravação (uma por vez) ----------
   let fila = Promise.resolve();
+  const erroSalvar = (e) => { const m = $("imp-msg"); m.className = "msg err"; m.textContent = "Não foi possível salvar: " + (e?.message || e); };
   function salvarCad(next) {
     S.cad = next; render();
-    fila = fila.then(() => S.db.doc("config/cadastro").set(next)).catch((e) => { const m = $("imp-msg"); m.className = "msg err"; m.textContent = "Não foi possível salvar o cadastro: " + (e?.message || e); });
+    fila = fila.then(() => S.db.doc("config/cadastro").set(next)).catch(erroSalvar);
     return fila;
   }
-  function ultimoDia() { return [...S.dias.keys()].sort().pop(); }
-  // previsto mudou: vale também para o último dia importado
-  async function ajustaPrevUltimo(next) {
-    const u = ultimoDia(); const d = u && S.dias.get(u); if (!d) return;
-    const prev = next.pessoas.filter((p) => p.previsto).map((p) => p.id);
-    const nd = { ...d, prev }; S.dias.set(u, nd);
-    try { await S.db.doc("dias/" + u).set(nd); } catch (e) { /* o snapshot devolve o estado salvo */ }
-  }
-  async function mudaCad(fn, afetaPrev) {
+  async function mudaCad(fn) {
     if (!S.cad || !S.db) return;
-    const next = fn(structuredClone(S.cad));
-    await salvarCad(next);
-    if (afetaPrev) await ajustaPrevUltimo(next);
+    await salvarCad(fn(structuredClone(S.cad)));
   }
-  function renderPending() {
-    const box = $("pending");
-    if (!S.pending) { box.hidden = true; box.innerHTML = ""; return; }
-    const c = S.pending.cad;
-    box.hidden = false;
-    box.innerHTML = `<div><b>A planilha ${esc(S.pending.arquivo)} também traz um cadastro</b> (${c.pessoas.length} pessoas, ${c.fornecedores.length} fornecedores).
-      <div class="muted">Substituir atualiza nomes, funções e “Previsto” pelo da planilha. Quem já existe continua com o mesmo histórico.</div></div>
-      <div class="row"><button type="button" class="primary" id="pend-ok">Substituir o cadastro</button><button type="button" id="pend-no">Manter o cadastro atual</button></div>`;
+  // marca ou desmarca o previsto de um dia
+  function setPrevDia(dia, fn) {
+    const d = S.dias.get(dia); if (!d || !S.db) return Promise.resolve();
+    const set = new Set(d.prev || prevBase(dia) || []);
+    fn(set);
+    const nd = { ...d, prev: [...set] }; S.dias.set(dia, nd); render();
+    fila = fila.then(() => S.db.doc("dias/" + dia).set(nd)).catch(erroSalvar);
+    return fila;
   }
-  document.addEventListener("click", async (ev) => {
-    if (ev.target.id === "pend-no") { S.pending = null; renderPending(); }
-    if (ev.target.id === "pend-ok" && S.pending) {
-      const novo = S.pending.cad, velhos = new Map((S.cad?.pessoas || []).map((p) => [norm(p.nome), p]));
-      novo.pessoas = novo.pessoas.map((p) => { const v = velhos.get(norm(p.nome)); return v ? { ...p, id: v.id, cpf: v.cpf || "" } : p; });
-      S.pending = null; renderPending();
-      await salvarCad({ ...novo, obra: S.cad?.obra || "" }); await ajustaPrevUltimo(novo);
-      const m = $("imp-msg"); m.className = "msg ok"; m.textContent = "Cadastro substituído.";
-    }
-  });
+  function criarDia(dia) {
+    if (!S.db || !/^\d{4}-\d{2}-\d{2}$/.test(dia)) return;
+    if (S.dias.has(dia)) { S.dia = dia; render(); return; }
+    const doc = { dia, arquivo: "", importadoEm: "", obra: S.cad?.obra || "", registros: [], prev: prevBase(dia) || [] };
+    S.dias.set(dia, doc); S.dia = dia; render();
+    fila = fila.then(() => S.db.doc("dias/" + dia).set(doc)).catch(erroSalvar);
+  }
 
   // ---------- render: dia ----------
   function render() {
@@ -443,11 +476,31 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
     const i = dias.indexOf(S.dia);
     $("prev-day").disabled = i <= 0; $("next-day").disabled = i < 0 || i >= dias.length - 1;
     $("btn-copy").disabled = !S.dia; $("btn-xlsx").disabled = !S.dia;
+    const foco = document.activeElement?.id;
     if (S.tab === "dia") renderDia(); if (S.tab === "hist") renderHist(); if (S.tab === "cad") renderCad();
+    if (foco && document.activeElement?.id !== foco && $(foco)) $(foco).focus();
   }
   function tile(cls, v, label, sub) { return `<div class="tile ${cls}"><span class="eyebrow">${label}</span><span class="v">${v}</span><span class="s">${sub}</span></div>`; }
+  let cpArmado = null;
+  function renderPlan(d) {
+    const dias = [...S.dias.keys()].sort();
+    const ult = dias[dias.length - 1];
+    const dt = $("plan-date");
+    if (!dt.value) { const b = new Date((ult || new Date().toISOString().slice(0, 10)) + "T12:00:00"); b.setDate(b.getDate() + 1); dt.value = b.toISOString().slice(0, 10); }
+    $("plan-new").disabled = !S.db;
+    const ant = d && dias.filter((k) => k < d.dia).pop();
+    const acts = [];
+    if (d && ant && S.db) {
+      acts.push(`<button type="button" data-cp="ant|${ant}">${cpArmado === "ant" ? "Confirmar: trocar pelo previsto de " + fmtDia(ant).slice(0, 5) : "Repetir o previsto de " + fmtDia(ant).slice(0, 5)}</button>`);
+      if (S.dias.get(ant).registros.length) acts.push(`<button type="button" data-cp="veio|${ant}">${cpArmado === "veio" ? "Confirmar: prever quem veio em " + fmtDia(ant).slice(0, 5) : "Prever quem veio em " + fmtDia(ant).slice(0, 5)}</button>`);
+    }
+    if (d && !d.registros.length && S.db) acts.push(`<button type="button" class="danger" data-deldia="${d.dia}">${cpArmado === "del" ? "Confirmar exclusão do dia" : "Excluir este dia"}</button>`);
+    $("plan-acts").innerHTML = acts.join("");
+    $("plan-acts").hidden = !acts.length;
+  }
   function renderDia() {
     const d = S.dia && S.dias.get(S.dia);
+    renderPlan(d);
     if (!d) {
       $("day-info").textContent = "";
       $("tiles").innerHTML = tile("", "–", "Previsto", "") + tile("ok", "–", "Presentes", "") + tile("bad", "–", "Faltas", "") + tile("extra", "–", "Fora da previsão", "") + tile("wide", "–", "Na catraca", "");
@@ -455,16 +508,17 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
       $("toggle-vazios").hidden = true; return;
     }
     const { lista, tot, catraca } = calcDia(d);
+    const espera = !d.registros.length;
     const hora = d.importadoEm ? new Date(d.importadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
-    $("day-info").textContent = `Relatório ${d.arquivo || ""} · importado ${hora}`;
+    $("day-info").textContent = espera ? "Aguardando o relatório da catraca deste dia" : `Relatório ${d.arquivo || ""} · importado ${hora}`;
     const pct = tot.prev ? Math.round((tot.ok / tot.prev) * 100) : 0;
-    $("tiles").innerHTML = tile("", tot.prev, "Previsto", "pessoas com Previsto = Sim")
-      + tile("ok", tot.ok, "Presentes", `${pct}% dos previstos`)
-      + tile("bad", tot.falta, "Faltas", "previstos que não passaram")
-      + tile("extra", tot.extra, "Fora da previsão", "passaram sem estar previstos")
-      + tile("wide", catraca, "Na catraca", "pessoas diferentes no dia");
+    $("tiles").innerHTML = tile("", tot.prev, "Previsto", "marcados para este dia")
+      + tile("ok", espera ? "–" : tot.ok, "Presentes", espera ? "aguardando catraca" : `${pct}% dos previstos`)
+      + tile("bad", espera ? "–" : tot.falta, "Faltas", espera ? "aguardando catraca" : "previstos que não passaram")
+      + tile("extra", espera ? "–" : tot.extra, "Fora da previsão", "passaram sem estar previstos")
+      + tile("wide", espera ? "–" : catraca, "Na catraca", "pessoas diferentes no dia");
     const q = norm(S.busca), f = S.filtro;
-    const vis = (x) => (f === "todos" ? x.st !== "none" || q : f === "falta" ? x.st === "falta" : x.st === "extra") && (!q || norm(x.nome + " " + x.funcao).includes(q));
+    const vis = (x) => (f === "todos" || (f === "falta" ? x.st === "falta" : x.st === "extra")) && (!q || norm(x.nome + " " + x.funcao).includes(q));
     let vazios = 0;
     let rows = lista.map((g) => {
       const pessoas = g.pessoas.filter(vis);
@@ -475,20 +529,22 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
       const w = g.prev ? Math.round((g.ok / g.prev) * 100) : 0;
       const ordem = { falta: 0, extra: 1, ok: 2, none: 3 };
       const lis = pessoas.sort((a, b) => ordem[a.st] - ordem[b.st] || a.nome.localeCompare(b.nome, "pt-BR")).map((x) => {
-        const pill = { ok: ["ok", "Presente"], falta: ["bad", "Falta"], extra: ["extra", x.sem ? "Sem cadastro" : "Não previsto"], none: ["none", "Não previsto"] }[x.st];
+        const pill = { ok: ["ok", "Presente"], falta: espera ? ["plan", "Previsto"] : ["bad", "Falta"], extra: ["extra", x.sem ? "Sem cadastro" : "Não previsto"], none: ["none", "Não previsto"] }[x.st];
         const sub = [x.funcao, x.r?.h ? "entrou " + x.r.h : "", x.sem && x.r.f && fornKey(x.r.f) !== fornKey(g.nome) ? "catraca: " + x.r.f : ""].filter(Boolean).join(" · ");
+        const chk = x.p ? `<input type="checkbox" class="pv" id="pv-${x.p.id}" data-tp="${x.p.id}"${x.prev ? " checked" : ""}${S.db ? "" : " disabled"} title="Previsto neste dia" aria-label="${esc(x.nome)} previsto neste dia">` : `<span class="pv-sp"></span>`;
         const add = x.sem && S.db ? `<button type="button" class="link" data-addp="${esc(g.nome)}|${esc(x.r.c)}|${esc(x.nome)}">Cadastrar</button>` : "";
-        return `<div class="p"><div class="who"><b>${esc(x.nome)}</b><span>${esc(sub)}</span></div>${add}<span class="pill ${pill[0]}">${pill[1]}</span></div>`;
+        return `<div class="p${x.st === "none" ? " off" : ""}">${chk}<label class="who" for="pv-${x.p?.id || ""}"><b>${esc(x.nome)}</b><span>${esc(sub)}</span></label>${add}${x.st === "none" || (espera && x.st === "falta") ? "" : `<span class="pill ${pill[0]}">${pill[1]}</span>`}</div>`;
       }).join("");
+      const acts = S.db && g.pessoas.some((x) => x.p) ? `<div class="grpact"><span class="muted">Previsto:</span><button type="button" class="link" data-gp="${esc(g.nome)}|1">marcar todos</button><button type="button" class="link" data-gp="${esc(g.nome)}|0">desmarcar todos</button></div>` : "";
       return `<tr class="forn${open ? " open" : ""}" data-g="${esc(g.nome)}" tabindex="0" aria-expanded="${open}">
         <td><span class="chev">›</span> ${esc(g.nome)}</td><td class="n${g.prev ? "" : " zero"}">${g.prev}</td><td class="n${g.ok ? "" : " zero"}">${g.ok}</td>
-        <td class="n${g.falta ? " bad" : " zero"}">${g.falta}</td><td class="n${g.extra ? " extra" : " zero"}">${g.extra}</td>
+        <td class="n${g.falta && !espera ? " bad" : " zero"}">${espera ? "–" : g.falta}</td><td class="n${g.extra ? " extra" : " zero"}">${g.extra}</td>
         <td><div class="bar" title="${w}% dos previstos presentes"><i style="width:${w}%"></i></div></td></tr>`
-        + (open ? `<tr class="people"><td colspan="6"><div class="plist">${lis || '<span class="muted">Ninguém nesta visão.</span>'}</div></td></tr>` : "");
+        + (open ? `<tr class="people"><td colspan="6">${acts}<div class="plist">${lis || '<span class="muted">Ninguém nesta visão.</span>'}</div></td></tr>` : "");
     }).join("");
     if (!rows) rows = `<tr><td colspan="6" class="muted" style="padding:18px 10px">Ninguém encontrado.</td></tr>`;
     $("tbl").innerHTML = `<thead><tr><th>Fornecedor</th><th class="n">Previsto</th><th class="n">Presente</th><th class="n">Falta</th><th class="n">Fora da prev.</th><th>Presença</th></tr></thead>
-      <tbody>${rows}<tr class="total"><td>Total geral</td><td class="n">${tot.prev}</td><td class="n">${tot.ok}</td><td class="n">${tot.falta}</td><td class="n">${tot.extra}</td><td><div class="bar"><i style="width:${pct}%"></i></div></td></tr></tbody>`;
+      <tbody>${rows}<tr class="total"><td>Total geral</td><td class="n">${tot.prev}</td><td class="n">${tot.ok}</td><td class="n">${espera ? "–" : tot.falta}</td><td class="n">${tot.extra}</td><td><div class="bar"><i style="width:${pct}%"></i></div></td></tr></tbody>`;
     const tv = $("toggle-vazios");
     tv.hidden = !(vazios && f === "todos" && !q);
     tv.textContent = S.vazios ? "Esconder fornecedores sem ninguém previsto" : `Mostrar ${vazios} fornecedores sem ninguém previsto`;
@@ -544,13 +600,10 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
     const ativo = document.activeElement?.id;
     box.innerHTML = S.cad.fornecedores.map((f, fi) => {
       const ps = S.cad.pessoas.filter((p) => p.fornecedor === f);
-      const nPrev = ps.filter((p) => p.previsto).length;
-      return `<div class="cadgrp"><div class="cadhead"><h2>${esc(f)} <span class="muted num" style="font-weight:500">${nPrev}/${ps.length} previstos</span></h2>
-        <div class="row"><button type="button" class="link" data-allprev="${fi}|1">Todos Sim</button><button type="button" class="link" data-allprev="${fi}|0">Todos Não</button>
-        ${ps.length ? "" : `<button type="button" class="link danger" data-delf="${fi}">Remover fornecedor</button>`}</div></div>
+      return `<div class="cadgrp"><div class="cadhead"><h2>${esc(f)} <span class="muted num" style="font-weight:500">${ps.length} ${ps.length === 1 ? "pessoa" : "pessoas"}</span></h2>
+        <div class="row">${ps.length ? "" : `<button type="button" class="link danger" data-delf="${fi}">Remover fornecedor</button>`}</div></div>
         ${ps.map((p) => `<div class="cadrow"><div><input type="text" id="n-${p.id}" value="${esc(p.nome)}" data-ed="${p.id}|nome" aria-label="Nome">${p.cpf ? `<div class="cpf num">CPF ${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}</div>` : ""}</div>
           <input class="func" type="text" id="f-${p.id}" value="${esc(p.funcao)}" data-ed="${p.id}|funcao" aria-label="Função">
-          <select id="s-${p.id}" data-prev="${p.id}" aria-label="Previsto"><option value="1"${p.previsto ? " selected" : ""}>Sim</option><option value="0"${p.previsto ? "" : " selected"}>Não</option></select>
           <button type="button" class="link danger" data-del="${p.id}">Remover</button></div>`).join("")}
         <form class="row" data-addto="${fi}"><input type="text" placeholder="Nome" aria-label="Nome da nova pessoa" id="an-${fi}" required><input type="text" placeholder="Função" aria-label="Função" id="af-${fi}"><button type="submit">Adicionar</button></form></div>`;
     }).join("");
@@ -558,7 +611,7 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
   }
   document.addEventListener("change", (ev) => {
     const t = ev.target;
-    if (t.dataset.prev) mudaCad((c) => { const p = c.pessoas.find((x) => x.id === t.dataset.prev); if (p) p.previsto = t.value === "1"; return c; }, true);
+    if (t.dataset.tp && S.dia) { const id = t.dataset.tp, on = t.checked; setPrevDia(S.dia, (set) => { on ? set.add(id) : set.delete(id); }); }
     if (t.dataset.ed) { const [id, campo] = t.dataset.ed.split("|"); const v = t.value.trim(); if (v || campo !== "nome") mudaCad((c) => { const p = c.pessoas.find((x) => x.id === id); if (p) p[campo] = v; return c; }); }
   });
   document.addEventListener("submit", (ev) => {
@@ -567,7 +620,7 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
     if (fm.id === "add-forn") { const v = $("new-forn").value.trim(); if (!v || !S.cad) return; if (!S.cad.fornecedores.some((f) => norm(f) === norm(v))) mudaCad((c) => { c.fornecedores.push(v); return c; }); $("new-forn").value = ""; }
     if (fm.dataset.addto) {
       const fi = +fm.dataset.addto, nome = $("an-" + fi).value.trim(), funcao = $("af-" + fi).value.trim(); if (!nome) return;
-      mudaCad((c) => { c.pessoas.push({ id: uid(), nome, funcao, fornecedor: c.fornecedores[fi], previsto: true, cpf: "" }); return c; }, true);
+      mudaCad((c) => { c.pessoas.push({ id: uid(), nome, funcao, fornecedor: c.fornecedores[fi], previsto: false, cpf: "" }); return c; });
     }
   });
   let delArmado = null;
@@ -579,16 +632,33 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
     if (t.dataset.f) { S.filtro = t.dataset.f; document.querySelectorAll("#filt button").forEach((b) => b.setAttribute("aria-pressed", b === t)); renderDia(); return; }
     if (t.id === "toggle-vazios") { S.vazios = !S.vazios; renderDia(); return; }
     if (t.id === "prev-day" || t.id === "next-day") { const d = [...S.dias.keys()].sort(); const i = d.indexOf(S.dia) + (t.id === "prev-day" ? -1 : 1); if (d[i]) { S.dia = d[i]; render(); } return; }
-    if (t.dataset.allprev) { const [fi, v] = t.dataset.allprev.split("|"); mudaCad((c) => { c.pessoas.forEach((p) => { if (p.fornecedor === c.fornecedores[+fi]) p.previsto = v === "1"; }); return c; }, true); return; }
+    if (t.dataset.gp && S.dia) { const [g, v] = t.dataset.gp.split("|"); const ids = (S.cad?.pessoas || []).filter((p) => p.fornecedor === g).map((p) => p.id); setPrevDia(S.dia, (set) => ids.forEach((id) => (v === "1" ? set.add(id) : set.delete(id)))); return; }
+    if (t.dataset.cp && S.dia) {
+      const [modo, ant] = t.dataset.cp.split("|");
+      if (cpArmado !== modo) { cpArmado = modo; renderPlan(S.dias.get(S.dia)); return; }
+      cpArmado = null;
+      const a = S.dias.get(ant); if (!a) return;
+      const ids = modo === "ant" ? new Set(a.prev || []) : new Set(calcDia(a).lista.flatMap((g) => g.pessoas.filter((x) => x.p && x.r).map((x) => x.p.id)));
+      setPrevDia(S.dia, (set) => { set.clear(); ids.forEach((id) => set.add(id)); }); return;
+    }
+    if (t.dataset.deldia) {
+      if (cpArmado !== "del") { cpArmado = "del"; renderPlan(S.dias.get(S.dia)); return; }
+      cpArmado = null; const k = t.dataset.deldia; S.dias.delete(k); S.dia = null; render();
+      fila = fila.then(() => S.db.doc("dias/" + k).delete()).catch(erroSalvar); return;
+    }
+    if (t.id === "plan-new") { criarDia($("plan-date").value); $("plan-date").value = ""; return; }
+    if (t.id === "pend-no") { $("pending").hidden = true; return; }
     if (t.dataset.delf) { mudaCad((c) => { c.fornecedores.splice(+t.dataset.delf, 1); return c; }); return; }
     if (t.dataset.del) {
       if (delArmado !== t.dataset.del) { delArmado = t.dataset.del; t.textContent = "Confirmar"; return; }
-      const id = t.dataset.del; delArmado = null; mudaCad((c) => { c.pessoas = c.pessoas.filter((p) => p.id !== id); return c; }, true); return;
+      const id = t.dataset.del; delArmado = null; mudaCad((c) => { c.pessoas = c.pessoas.filter((p) => p.id !== id); return c; }); return;
     }
     if (t.dataset.addp) {
       const [forn, cpf, nome] = t.dataset.addp.split("|");
       const r = S.dias.get(S.dia)?.registros.find((x) => (cpf && x.c === cpf) || x.n === nome);
-      mudaCad((c) => { if (!c.fornecedores.includes(forn)) c.fornecedores.push(forn); c.pessoas.push({ id: uid(), nome, funcao: r?.o || "", fornecedor: forn, previsto: true, cpf: cpf || "" }); return c; }, true);
+      const id = uid(), dia = S.dia;
+      mudaCad((c) => { if (!c.fornecedores.includes(forn)) c.fornecedores.push(forn); c.pessoas.push({ id, nome, funcao: r?.o || "", fornecedor: forn, previsto: false, cpf: cpf || "" }); return c; })
+        .then(() => setPrevDia(dia, (set) => set.add(id)));
     }
   });
   document.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches?.("tr.forn")) { ev.preventDefault(); ev.target.click(); } });
