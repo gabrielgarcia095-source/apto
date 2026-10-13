@@ -62,6 +62,11 @@ header p { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
 .bar > i { display: block; height: 100%; background: var(--accent); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+#ras-chips { flex-direction: column; gap: 6px; }
+.chip-grp { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip-lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #6b7280); width: 11rem; flex: none; }
+.chip.zero { opacity: .55; }
+@media (max-width: 640px) { .chip-lbl { width: 100%; } }
 .chip { font: inherit; font-size: .82rem; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 5px 12px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
 .chip b { font-family: var(--font-num); font-weight: 500; }
 .chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
@@ -2336,8 +2341,8 @@ ${eap.txt}`;
     const base = resRows();
     const soma = (k, f) => base.filter(test(k)).reduce((t, x) => t + (f(x) || 0), 0);
     const tolA = (x) => Math.max(1, (x.c.lanc || 0) * 0.005);
-    const chips = [["pend", "Precisa de você"], ["lancar", "Falta lançar no orçamento"], ["conf", "Pedido a confirmar"], ["sem", "Sem pedido"], ["notas", "Notas a conferir"],
-      ["dev", "Devolver ao orçamento", soma("dev", (x) => x.ajuste)], ["add", "Acrescentar ao orçamento", soma("add", addValor)], ["and", "Em andamento"], ["ok", "Fechadas"], ["aguarda", "Aguardando valor"], ["todas", "Todas"]];
+    const chips = [["pend", "Pendências"], ["lancar", "Falta lançar"], ["conf", "Pedido a confirmar"], ["sem", "Cotação sem pedido"], ["notas", "Notas a conferir"],
+      ["dev", "Devolver", soma("dev", (x) => x.ajuste)], ["add", "Acrescentar", soma("add", addValor)], ["and", "Em andamento"], ["ok", "Fechadas"], ["aguarda", "Aguardando valor"], ["todas", "Todas as cotações"]];
     const A = S.nfMeta && temDocs() ? nfAnalise() : null;
     const descart = (S.elos?.rej || []).filter((l) => S.cot.get(l.cot));
     // credores já ligados a uma cotação (folha, PJ sem contrato) saem de "Notas sem pedido"
@@ -2355,7 +2360,13 @@ ${eap.txt}`;
     if (A) chips.push(["fin", "Notas sem pedido"]);
     const q = $("ras-q").value.trim();
     $("btn-copia").textContent = !q && S.rasF === "dev" ? "Copiar devoluções ao orçamento" : !q && S.rasF === "add" ? "Copiar acréscimos ao orçamento" : "Copiar o que falta lançar";
-    $("ras-chips").innerHTML = chips.map(([k, l, v]) => `<button type="button" class="chip" data-rasf="${k}" aria-pressed="${!q && S.rasF === k}">${l} <span class="num">${k in extra ? extra[k] : base.filter(test(k)).length}</span>${v ? ` <span class="num hint">${fmt(v)}</span>` : ""}</button>`).join("");
+    // filtros em grupos: visão geral, o que mexe na planilha, o que conferir no Sienge e o andamento
+    const chipBy = new Map(chips.map((c) => [c[0], c]));
+    const GRUPOS = [["Visão geral", ["todas", "pend"]], ["Planilha de orçamento", ["lancar", "dev", "add"]],
+      ["Conferir no Sienge", ["conf", "sem", "notas", "livres", "fin", "errados", "descart"]], ["Andamento", ["and", "ok", "aguarda"]]];
+    const chipHtml = ([k, l, v]) => { const n = k in extra ? extra[k] : base.filter(test(k)).length;
+      return `<button type="button" class="chip${!n && k !== "todas" ? " zero" : ""}" data-rasf="${k}" aria-pressed="${!q && S.rasF === k}">${l} <span class="num">${n}</span>${v ? ` <span class="num hint">${fmt(v)}</span>` : ""}</button>`; };
+    $("ras-chips").innerHTML = GRUPOS.map(([t, ks]) => { const cs = ks.map((k) => chipBy.get(k)).filter(Boolean); return cs.length ? `<div class="chip-grp"><span class="chip-lbl">${t}</span>${cs.map(chipHtml).join("")}</div>` : ""; }).join("");
     if (S.rasF === "livres" && !q && K.P) {
       const L = K.P.livres.slice().sort((a, b) => parseDate(b.data) - parseDate(a.data));
       box.innerHTML = `<p class="hint">Pedidos e contratos do Sienge que não estão ligados a nenhuma cotação. Digite o nº da cotação para ligar, ou marque como lançado errado.</p>` +
