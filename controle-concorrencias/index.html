@@ -2118,13 +2118,14 @@ ${eap.txt}`;
       const j = justOf(c.id);
       consumido += finTot; notas += finTot;
       if (!docs.length && finTot > 0) comprado = c.valor || 0;   // sem pedido: o "comprado" é o aprovado
-      const sit = !docs.length ? (finTot > 0 ? "and" : "sem") : docs.every((x) => x.enc) ? "enc" : "and";
+      // sem pedido, pago pelo financeiro: só encerra quando você marca (fincot.encerrado)
+      const sit = !docs.length ? (finTot > 0 ? (fc?.encerrado ? "enc" : "and") : "sem") : docs.every((x) => x.enc) ? "enc" : "and";
       comprado = r2(comprado); consumido = r2(consumido);
       // nº de cotação repetido: o lançado é do nº inteiro; cada cotação fica com a sua parte (pelo valor aprovado)
       const nk = D.keyCount.get(c.k) || 1, base = nk > 1 ? [...S.cot.values()].filter((o) => key(o.num) === c.k).reduce((t, o) => t + (o.valor || 0), 0) : 0;
       const dvs = dvBy.get(c.k) || [];
       const lanc = r2((nk > 1 && base > 0 ? c.lanc * (c.valor || 0) / base : c.lanc) + dvs.reduce((t, d) => t + (d.lanc || 0), 0));
-      const nada = sit === "enc" && docs.every((x) => /Cancel|Rescind/i.test(x.d.sit) && !(x.uso > 0));
+      const nada = sit === "enc" && docs.length > 0 && docs.every((x) => /Cancel|Rescind/i.test(x.d.sit) && !(x.uso > 0));
       const ajuste = sit === "enc" ? r2(lanc - consumido) : null;      // + volta ao orçamento, − falta
       const aConsumir = sit === "and" ? r2(comprado - consumido) : null;   // negativo: já passou do pedido/contrato
       return { c: { ...c, lanc }, fin: finTits.length ? { tits: finTits, total: finTot, obs: fc.obs || "", porNota: !(fc.credores || []).length } : null, dvPend: dvs.filter((d) => !d.lanc), docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
