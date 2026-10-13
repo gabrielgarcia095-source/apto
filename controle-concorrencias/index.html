@@ -648,7 +648,7 @@ tr.detail > td { background: var(--bg); padding: 12px 14px 16px; box-shadow: ins
     $("btn-save").disabled = true;
     try {
       const ref = S.editing ? S.db.collection("cotacoes").doc(S.editing) : S.db.collection("cotacoes").doc();
-      await ref.set(data);
+      await ref.set(old ? { ...old, ...data } : data);
       if (S.qcPending) qcFormSaved();
       const msg = old ? `Cotação ${num} atualizada.` : `Cotação ${num} cadastrada.`;
       resetForm(); setMsg(msg);
@@ -681,7 +681,7 @@ tr.detail > td { background: var(--bg); padding: 12px 14px 16px; box-shadow: ins
   });
 
   async function saveVinc(next, msgEl, ok) {
-    try { await S.db.doc("config/vinculos").set({ map: next }); if (msgEl) { msgEl.className = "msg"; msgEl.textContent = ok; } }
+    try { await S.db.doc("config/vinculos").set({ map: next }); S.vinc = next; if (msgEl) { msgEl.className = "msg"; msgEl.textContent = ok; } }
     catch (e) { if (msgEl) { msgEl.className = "msg err"; msgEl.textContent = errText(e); } }
   }
   function findLine(id) { return confRows().find((r) => String(r[4]) === String(id)); }
@@ -852,7 +852,13 @@ tr.detail > td { background: var(--bg); padding: 12px 14px 16px; box-shadow: ins
   // Todas as linhas que ainda faltam na planilha de orçamento, já na ordem das colunas D a G da aba LANÇAMENTOS
   // nos filtros "Devolver" / "Acrescentar ao orçamento": copia as linhas "DV <nº>" (negativas) ou "AD <nº>" nas mesmas linhas da planilha
   // e registra no site as que faltam, para somar no lançado da cotação depois que a planilha voltar
+  const ajCriados = new Map();   // DV/AD criadas nesta sessão, até a lista voltar do banco
+  let copiando = false;
   async function copiaAjuste(m, tipo) {
+    if (copiando) return; copiando = true; $("btn-copia").disabled = true;
+    try { await copiaAjuste0(m, tipo); } finally { copiando = false; $("btn-copia").disabled = false; }
+  }
+  async function copiaAjuste0(m, tipo) {
     const K = rasCats(), dev = tipo === "DV";
     const rows = resRows().filter(K.C[dev ? "dev" : "add"]).filter((x) => dev || addValor(x) > 0)
       .sort((a, b) => numOrd(b.c) - numOrd(a.c) || (b.c.ordem ?? 0) - (a.c.ordem ?? 0));
@@ -860,9 +866,9 @@ tr.detail > td { background: var(--bg); padding: 12px 14px 16px; box-shadow: ins
     const linhas = [], novas = [], semEap = [], usados = new Set([...S.cot.values()].map((c) => key(c.num)));
     let total = 0;
     for (const x of rows) {
-      const pend = (x.dvPend || []).find((d) => dev ? d.valor < 0 : d.valor > 0);
+      const pend = (x.dvPend || []).find((d) => dev ? d.valor < 0 : d.valor > 0) || ajCriados.get(`${tipo}|${x.c.id}`);
       const d = pend ? (S.cot.get(pend.id) || pend) : novoAjuste(x, tipo, usados);
-      if (!pend) novas.push(d);
+      if (!pend) { novas.push(d); ajCriados.set(`${tipo}|${x.c.id}`, d); }
       let ls = d.qc?.lancamentos || [];
       if (!ls.length) { semEap.push(d.num); ls = [{ item: "", descricao: d.desc, valor: d.valor }]; }
       linhas.push(sugTsv(ls, d.num)); total += d.valor;
@@ -872,7 +878,7 @@ tr.detail > td { background: var(--bg); padding: 12px 14px 16px; box-shadow: ins
     let reg = "";
     if (novas.length && S.db) {
       try { for (const d of novas) await S.db.collection("cotacoes").doc().set(d); reg = ` ${novas.length} registrada(s) no site como "${tipo} <nº>".`; }
-      catch (e) { reg = ` Não consegui registrar no site: ${errText(e)}.`; }
+      catch (e) { reg = ` Não consegui registrar no site: ${errText(e)}.`; for (const [k, v] of ajCriados) if (novas.includes(v)) ajCriados.delete(k); }
     }
     if (!m.querySelector("textarea")) m.textContent = `${n} linha(s) ${dev ? "de devolução" : "de acréscimo"} copiada(s) (${rows.length} cotações, ${fmt(Math.abs(total))}). Cole na coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre (vai de D a G)${dev ? "; os valores vão negativos" : ""}.${reg}${semEap.length ? ` Atenção: ${semEap.length} sem linha da planilha foram com a coluna D em branco (${semEap.slice(0, 8).join(", ")}${semEap.length > 8 ? "…" : ""}).` : ""}`;
   }
@@ -1145,7 +1151,7 @@ tr.detail > td { background: var(--bg); padding: 12px 14px 16px; box-shadow: ins
       const src = sugSource(ctx) || [];
       if (src.some((l) => !leafOk(l.eap))) return bad();
       try {
-        await S.db.doc("cotacoes/" + ctx).update({ qc: { lancamentos: src.map((l) => ({ eap: l.eap, item: l.item, descricao: l.descricao, valor: l.valor, itens_qc: l.itens_qc || [], motivo: l.motivo || "" })), confirmadoEm: new Date().toISOString() } });
+        await S.db.doc("cotacoes/" + ctx).update({ qc: { ...(S.cot.get(ctx)?.qc || {}), lancamentos: src.map((l) => ({ eap: l.eap, item: l.item, descricao: l.descricao, valor: l.valor, itens_qc: l.itens_qc || [], motivo: l.motivo || "" })), confirmadoEm: new Date().toISOString() } });
         delete S.sugDraft[ctx];
       } catch (e) { if (msg) { msg.className = "msg err"; msg.textContent = errText(e); } }
       return;
@@ -1407,7 +1413,11 @@ ${eap.txt}`;
 
   // Grava a cotação direto a partir do QC (sem passar pelo formulário)
   async function saveItem(it, confirmado) {
-    if (!S.db || it.total == null) return false;
+    if (!S.db || it.total == null || it.salvando) return false;
+    it.salvando = true;
+    try { return await saveItem0(it, confirmado); } finally { it.salvando = false; }
+  }
+  async function saveItem0(it, confirmado) {
     const ex = qExisting(it);
     const multi = it.venc.length > 1;
     const formula = multi ? it.venc.map((v) => N2.format(v.valor)).join(" + ") : null;
@@ -1932,7 +1942,7 @@ ${eap.txt}`;
   }
   function parseRelPedidos(wb) {
     const A = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
-    if (!A.slice(0, 6).some((r) => r.some((v) => /Relação de Pedidos de Compra/i.test(String(v))))) throw new Error('Este arquivo não é a "Relação de Pedidos de Compra".');
+    if (!A.slice(0, 15).some((r) => r.some((v) => /Relação de Pedidos de Compra/i.test(String(v))))) throw new Error('Este arquivo não é a "Relação de Pedidos de Compra".');
     const out = []; let cur = null, data = "", comp = "", col = null, total = null;
     const num = (v) => typeof v === "number" ? v : (parseValor(String(v ?? "")).valor || 0);
     for (const r of A) {
@@ -1960,7 +1970,7 @@ ${eap.txt}`;
 
   // ---- gravação das confirmações (config/elos: links e recusas por nº do documento) ----
   async function saveElos(next, msgEl, ok) {
-    try { await S.db.doc("config/elos").set(next); if (msgEl) { msgEl.className = "msg"; msgEl.textContent = ok; } }
+    try { await S.db.doc("config/elos").set(next); S.elos = next; if (msgEl) { msgEl.className = "msg"; msgEl.textContent = ok; } }
     catch (e) { if (msgEl) { msgEl.className = "msg err"; msgEl.textContent = errText(e); } }
   }
   const curElos = () => ({ links: [...(S.elos?.links || [])], rej: [...(S.elos?.rej || [])], just: [...(S.elos?.just || [])], errados: [...(S.elos?.errados || [])] });
@@ -1992,6 +2002,7 @@ ${eap.txt}`;
     const b = ev.target.closest("[data-el]"); if (!b || !S.db) return;
     ev.stopPropagation();
     const act = b.dataset.el, cot = b.dataset.cot, doc = b.dataset.doc;
+    if (act !== "undook" && act !== "ok" && act !== "names") { S.undoOk = null; $("ped-msg")?.querySelector('[data-el="undook"]')?.remove(); }
     const msg = $("el-msg-" + cot) || $("ped-msg");
     const e = curElos();
     if (act === "ok") {
@@ -2098,22 +2109,28 @@ ${eap.txt}`;
     const finCred = new Map();
     const finTit = new Map();   // nota avulsa ligada pela chave do título (config/fincot: tits)
     if (S.nfMeta && S.finCot) for (const r of nfAnalise().semDoc) { if (/^(PRV|GUIA|CAU|PPC|PCT)$/.test(nfTipo(r[2]))) continue; (finCred.get(r[1]) || finCred.set(r[1], []).get(r[1])).push(r); finTit.set(titKey(r), r); }
+    // partes de cada documento entre as cotações (ligações confirmadas e automáticas, sem faturamento direto)
+    const shares = new Map();
+    if (temDocs()) for (const [cid, r] of elosAll().res) for (const e of r.certos) if (!e.fd) (shares.get(e.doc.id) || shares.set(e.doc.id, []).get(e.doc.id)).push({ cot: cid, parte: e.parte ?? null });
+    const finUsados = new Set();   // um pagamento do financeiro conta numa cotação só
     return D.rows.filter((c) => !(c.valor < 0) && !c.ajusteDe).map((c) => {
-      const fc = S.finCot?.[c.id], finTits = fc ? [...new Set([...(fc.credores || []).flatMap((k) => finCred.get(k) || []), ...(fc.tits || []).map((k) => finTit.get(k)).filter(Boolean)])].sort((a, b) => parseDate(a[5]) - parseDate(b[5])) : [];
+      const fc = S.finCot?.[c.id], finTits = fc ? [...new Set([...(fc.credores || []).flatMap((k) => finCred.get(k) || []), ...(fc.tits || []).map((k) => finTit.get(k)).filter(Boolean)])].filter((r) => !finUsados.has(r) && finUsados.add(r)).sort((a, b) => parseDate(a[5]) - parseDate(b[5])) : [];
       const finTot = r2(finTits.reduce((t, r) => t + (r[7] || 0), 0));
       const certos = temDocs() ? elosOf(c.id).certos.filter((e) => !e.fd) : [];
-      let comprado = 0, consumido = 0, notas = 0;
+      let comprado = 0, compradoEf = 0, consumido = 0, notas = 0;
       const docs = certos.map((e) => {
         const d = e.doc, n = nfBy.get(d.id);
         // documento dividido entre cotações: cada uma fica com a sua parte do consumido (parte / soma das partes)
         // ligação sem valor num documento dividido vale o aprovado da própria cotação
-        const ls = (S.elos?.links || []).filter((l) => l.doc === d.id && !l.fd), dividido = ls.length > 1 && ls.some((l) => l.parte != null);
+        const ls = shares.get(d.id) || [], dividido = ls.length > 1 && ls.some((l) => l.parte != null);
         const parteDe = (l) => l.parte != null ? l.parte : (S.cot.get(l.cot)?.valor || 0);
         const sp = dividido ? ls.reduce((t, l) => t + parteDe(l), 0) : 0;
         const minha = e.parte != null ? e.parte : dividido ? (c.valor || 0) : null;
         const f = minha != null ? (sp > 0 ? minha / sp : d.prim > 0 ? minha / d.prim : 1) : 1;
         const nf = n ? n.nf : 0, uso = Math.max(d.sec || 0, nf);
-        comprado += minha != null ? minha : d.prim; consumido += uso * f; notas += nf * f;
+        comprado += minha != null ? minha : d.prim;
+        compradoEf += minha != null ? (d.prim > 0 ? minha * efetivo(d) / d.prim : minha) : efetivo(d); // pedido fechado conta o que foi entregue
+        consumido += uso * f; notas += nf * f;
         const porCred = new Map(); // notas deste pedido/contrato por fornecedor da nota
         for (const t of n?.tits || []) if (t.tipo !== "GUIA" && t.tipo !== "CAU") { const k = t.r[1].replace(/^\d+\s*-\s*/, ""); const v = porCred.get(k) || { v: 0, n: 0 }; v.v += t.parte; v.n++; porCred.set(k, v); }
         return { d, f, parte: minha, nf, uso, enc: encerrado(d), porCred: [...porCred].sort((a, b) => b[1].v - a[1].v), it: itensOf(d) };
@@ -2123,15 +2140,17 @@ ${eap.txt}`;
       if (!docs.length && finTot > 0) comprado = c.valor || 0;   // sem pedido: o "comprado" é o aprovado
       // sem pedido, pago pelo financeiro: só encerra quando você marca (fincot.encerrado)
       const sit = !docs.length ? (finTot > 0 ? (fc?.encerrado ? "enc" : "and") : "sem") : docs.every((x) => x.enc) ? "enc" : "and";
+      if (docs.length && sit === "and") comprado = compradoEf;   // em andamento: saldo cancelado de um pedido não conta como "falta consumir"
       comprado = r2(comprado); consumido = r2(consumido);
       // nº de cotação repetido: o lançado é do nº inteiro; cada cotação fica com a sua parte (pelo valor aprovado)
       const nk = D.keyCount.get(c.k) || 1, base = nk > 1 ? [...S.cot.values()].filter((o) => key(o.num) === c.k).reduce((t, o) => t + (o.valor || 0), 0) : 0;
       const dvs = dvBy.get(c.k) || [];
-      const lanc = r2((nk > 1 && base > 0 ? c.lanc * (c.valor || 0) / base : c.lanc) + dvs.reduce((t, d) => t + (d.lanc || 0), 0));
+      const fat = nk > 1 && base > 0 ? (c.valor || 0) / base : 1, ajLanc = r2(dvs.reduce((t, d) => t + (d.lanc || 0), 0) * fat);
+      const lanc = r2(c.lanc * fat + ajLanc);
       const nada = sit === "enc" && docs.length > 0 && docs.every((x) => /Cancel|Rescind/i.test(x.d.sit) && !(x.uso > 0));
       const ajuste = sit === "enc" ? r2(lanc - consumido) : null;      // + volta ao orçamento, − falta
       const aConsumir = sit === "and" ? r2(comprado - consumido) : null;   // negativo: já passou do pedido/contrato
-      return { c: { ...c, lanc, lancBruto: c.lanc, ajLanc: r2(dvs.reduce((t, d) => t + (d.lanc || 0), 0)) }, fin: finTits.length ? { tits: finTits, total: finTot, obs: fc.obs || "", porNota: !(fc.credores || []).length } : null, dvPend: dvs.filter((d) => !d.lanc), docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
+      return { c: { ...c, lanc, lancBruto: c.lanc, ajLanc }, fin: finTits.length ? { tits: finTits, total: finTot, obs: fc.obs || "", porNota: !(fc.credores || []).length } : null, dvPend: dvs.filter((d) => !d.lanc), docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
     });
   }
   // estouro = consumido acima do comprado (pedido/contrato). Registrar vira uma cotação "AD" ligada ao mesmo documento,
@@ -2253,7 +2272,7 @@ ${eap.txt}`;
       sem: (x) => x.sit === "sem" && !x.j && !sug.has(x.c.id) && x.c.valor > 0,
       notas: nfRuim,
       dev: (x) => x.sit === "enc" && x.ajuste > tol(x),
-      add: (x) => x.sit === "enc" && x.ajuste < -tol(x) || (estouro(x) > 0 && !cabeOrc(x)),
+      add: (x) => x.sit === "enc" ? x.ajuste < -tol(x) : x.c.lanc > 0 && estouro(x) > 0 && !cabeOrc(x),
       and: (x) => x.sit === "and",
       ok: (x) => x.sit === "enc" && Math.abs(x.ajuste) <= tol(x),
       aguarda: (x) => x.c.valor == null,
@@ -2301,7 +2320,7 @@ ${eap.txt}`;
       (fs.length ? `<div class="hint">${fs.map((f) => `${esc(f.num)} ${fmt(f.valor)}${f.lanc ? " (lançado)" : " (falta lançar)"}`).join(" · ")}</div>` : "") +
       (!x.dvPend?.length && x.sit === "enc" && x.ajuste > tol ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-dv="${esc(cid)}">Registrar devolução ao orçamento (${fmt(x.ajuste)})</button><span class="hint">cria a cotação “DV ${esc(x.c.num)}” com valor negativo, nas mesmas linhas da EAP</span></div>` : "") +
       (estouro(x) > 0 && cabeOrc(x) ? `<div class="hint">As notas passaram do pedido em ${fmt(estouro(x))}, mas o gasto ainda cabe no que foi lançado no orçamento: não precisa de aditivo.</div>` : "") +
-      (!x.dvPend?.length && addValor(x) > 0 && (x.sit === "enc" ? x.ajuste < -tol : estouro(x) > 0 && !cabeOrc(x)) ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-ad="${esc(cid)}">Registrar acréscimo ao orçamento (${fmt(addValor(x))})</button><span class="hint">cria a linha “AD ${esc(x.c.num)}” para lançar na planilha${estouro(x) > 0 ? "; no Sienge, faça o aditivo do pedido/contrato" : ""}</span></div>` : "");
+      (!x.dvPend?.length && addValor(x) > 0 && (x.sit === "enc" ? x.ajuste < -tol : x.c.lanc > 0 && estouro(x) > 0 && !cabeOrc(x)) ? `<div class="row" style="margin-top:4px"><button class="btn" type="button" data-ad="${esc(cid)}">Registrar acréscimo ao orçamento (${fmt(addValor(x))})</button><span class="hint">cria a linha “AD ${esc(x.c.num)}” para lançar na planilha${estouro(x) > 0 ? "; no Sienge, faça o aditivo do pedido/contrato" : ""}</span></div>` : "");
     return `<div class="ras-open">` + sec(1, "st1", "Orçamento", "o que está na planilha", s1) + sec(2, "st2", "Pedido / contrato", "o que foi comprado no Sienge", s2) +
       sec(3, "st3", "Notas fiscais", "o que foi faturado", s3) + sec("=", "st4", "Resultado", "orçamento × gasto", s4) + `</div>`;
   }
@@ -2531,9 +2550,12 @@ ${eap.txt}`;
     dz.addEventListener("drop", (ev) => { ev.preventDefault(); lerRelatorios([...(ev.dataTransfer?.files || [])]); });
   }
   $("ped-file").addEventListener("change", (ev) => { const fs = [...(ev.target.files || [])]; ev.target.value = ""; lerRelatorios(fs); });
+  let importando = false;
   async function lerRelatorios(files) {
     if (!files.length) return;
-    const m = $("ped-imp-msg"); m.className = "msg"; m.textContent = "Lendo…"; pedPend = [];
+    const m = $("ped-imp-msg");
+    if (importando) { m.className = "msg err"; m.textContent = "Aguarde: a importação anterior ainda está gravando."; return; }
+    m.className = "msg"; m.textContent = "Lendo…"; pedPend = [];
     for (const f of files) {
       try {
         if (/\.xlsx?$/i.test(f.name)) { const r = await lerXlsx(f); pedPend.push({ f, ...r }); continue; }
@@ -2552,10 +2574,23 @@ ${eap.txt}`;
     if (ok && !pedPend.some((p) => p.erro)) $("ped-go").click(); // tudo reconhecido: importa direto
   }
   $("ped-go").addEventListener("click", async () => {
-    const m = $("ped-imp-msg"), b = $("ped-go"); b.disabled = true;
+    const m = $("ped-imp-msg"), b = $("ped-go");
     if (!S.db) { m.innerHTML += `<div class="neg">Banco de dados indisponível.</div>`; return; }
+    if (importando) return;
+    importando = true; b.disabled = true;
+    const lote = pedPend;
+    // dois arquivos do mesmo relatório (ex.: dois períodos de títulos): junta numa importação só, sem repetir linhas
+    const porTipo = new Map();
+    for (const p of lote.filter((x) => x.kind && x.rows?.length)) {
+      const g = porTipo.get(p.kind);
+      if (!g) { porTipo.set(p.kind, { ...p, rows: [...p.rows], nomes: [p.f.name] }); continue; }
+      const chave = (r) => p.kind === "titulos" ? JSON.stringify(r) : String(r[0]);
+      const tem = new Set(g.rows.map(chave)); for (const r of p.rows) if (!tem.has(chave(r))) g.rows.push(r);
+      g.nomes.push(p.f.name);
+      if (p.kind === "titulos") { const sm = Math.round(g.rows.reduce((t, r) => t + (r[7] || 0), 0) * 100) / 100; g.extra = { ...g.extra, soma: sm, total: sm }; }
+    }
     try {
-      for (const p of pedPend.filter((x) => x.docs?.length)) {
+      for (const p of lote.filter((x) => x.docs?.length)) {
         const rows = p.docs.map((d) => [d.num, d.data, d.forn, d.prim, d.sec, d.sit, d.saldo]);
         const parts = []; for (let i = 0; i < rows.length; i += PART_SIZE) parts.push(rows.slice(i, i + PART_SIZE));
         const old = S.docMeta[p.tipo]?.partes ?? 0;
@@ -2563,10 +2598,11 @@ ${eap.txt}`;
         await S.db.doc(`config/docs-${p.tipo}`).set({ arquivo: p.f.name, importadoEm: new Date().toISOString(), n: rows.length, soma: p.soma, total: p.total, partes: parts.length });
         for (let i = parts.length; i < old; i++) await S.db.doc(`docs/${p.tipo}-${i}`).delete();
       }
-      for (const p of pedPend.filter((x) => x.kind && x.rows?.length)) await gravarPartes(XL_TIPOS[p.kind], p.f, p.rows, p.extra);
+      for (const g of porTipo.values()) await gravarPartes(XL_TIPOS[g.kind], { name: g.nomes.join(" + ") }, g.rows, g.extra);
       m.innerHTML += `<div style="color:var(--ok)">Importado. Tudo foi recalculado; o que você já confirmou ou recusou foi mantido.</div>`;
-      pedPend = []; b.hidden = true;
+      if (pedPend === lote) pedPend = []; b.hidden = true;
     } catch (e) { m.innerHTML += `<div class="neg">${esc(e?.code ? errText(e) : (e?.message || String(e)))}</div>`; b.disabled = false; }
+    finally { importando = false; }
   });
 
 
@@ -2574,7 +2610,7 @@ ${eap.txt}`;
   //   medição: [nº, data, total dos itens, reajuste, total bruto, caução]; liberação: [documento, vencimento, bruto, impostos, desconto, líquido]
   function parseExtrato(wb) {
     const A = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" });
-    if (!A.slice(0, 6).some((r) => r.some((v) => /Extrato do Fornecedor/i.test(String(v))))) throw new Error('Este arquivo não é o "Extrato do Fornecedor".');
+    if (!A.slice(0, 15).some((r) => r.some((v) => /Extrato do Fornecedor/i.test(String(v))))) throw new Error('Este arquivo não é o "Extrato do Fornecedor".');
     const num = (v) => typeof v === "number" ? v : (parseValor(String(v ?? "")).valor || 0);
     const out = []; let forn = "", cur = null, col = null, lastDoc = "";
     for (const r of A) {
@@ -2589,7 +2625,7 @@ ${eap.txt}`;
         const n = r[col["Nº"]];
         if (n !== "" && /^\d+$/.test(String(n).trim())) cur[6].push([Number(n), xlDate(r[col.Data]), num(r[col["Total dos itens"]]), num(r[col.Reajuste]), num(r[col["Total bruto"]]), num(r[col["Caução"]])]);
         const vb = r[col["Valor bruto"]];
-        if (vb !== "" && vb != null && !isNaN(num(vb))) {
+        if (typeof vb === "number" || (vb !== "" && vb != null && parseValor(String(vb)).valor != null)) {
           const doc = String(r[col.Documento] ?? "").replace(/\s+/g, " ").trim() || lastDoc; lastDoc = doc;
           if (doc) cur[7].push([doc, xlDate(r[col.Vencimento]), num(vb), num(r[col.Impostos]), num(r[col.Desconto]), num(r[col["Valor líquido"]])]);
         }
@@ -2621,7 +2657,7 @@ ${eap.txt}`;
       if (typeof it === "number" || /^\d+$/.test(String(it).trim())) {
         rows.push([String(r[col.Titulo]).trim(), String(r[col.Credor]).trim(), String(r[col.Documento]).replace(/\s+/g, " ").trim(), String(r[col.Or]).trim(),
           String(r[col["CT/OC"]] ?? "").trim(), xlDate(r[col["Emis.NF"]]), xlDate(r[col.Vencto]), xlNum(r[col["Valor bruto"]]), xlNum(r[col.Imposto]), xlNum(r[col["Valor líquido"]])]);
-      } else if (total == null && r.some((v) => /^Total geral/i.test(String(v).trim()))) total = r.find((v) => typeof v === "number") ?? null;
+      } else if (total == null && r.some((v) => /^Total geral/i.test(String(v).trim()))) { const tv = r[col["Valor bruto"]]; total = typeof tv === "number" ? tv : tv !== "" && tv != null && parseValor(String(tv)).valor != null ? xlNum(tv) : r.find((v) => typeof v === "number") ?? null; }
     }
     return { rows, total };
   }
@@ -2723,7 +2759,7 @@ ${eap.txt}`;
     const usadas = new Set(), sugeridas = new Set(), expC = S.explicados || {};
     for (const x of linhas) {
       const fk2 = new Set(expC[x.d.id]?.fin || []); if (!fk2.size) continue;
-      const rs = semDoc.filter((r) => fk2.has(titKey(r)));
+      const rs = semDoc.filter((r) => fk2.has(titKey(r)) && !usadas.has(r));
       for (const r of rs) { usadas.add(r); x.nf = r2(x.nf + (r[7] || 0)); x.tits.push({ r, parte: r[7] || 0, tipo: nfTipo(r[2]), finOk: true }); }
       if (rs.length) { x.dif = r2(x.nf - x.ent); if (Math.abs(x.dif) <= Math.max(1, x.ent * 0.005)) x.st = "ok"; else if (x.dif > 0) x.st = "acima"; }
     }
@@ -2813,7 +2849,7 @@ ${eap.txt}`;
       const fin = b.dataset.fin ? b.dataset.fin.split("||") : (S.explicados?.[id]?.fin || []);
       novo[id] = { tits: x.tits.filter((t) => !t.finOk).map((t) => titKey(t.r)), ...(fin.length ? { fin } : {}), obs: ($("exp-obs-" + id.replace(/\W/g, "_"))?.value || "").trim(), em: new Date().toISOString() };
     }
-    try { await S.db.doc("config/explicados").set(novo); } catch (e) { b.textContent = errText(e); }
+    try { await S.db.doc("config/explicados").set(novo); S.explicados = novo; } catch (e) { b.textContent = errText(e); }
   });
   // situação do contrato marcada por você (o extrato não diz se foi concluído ou rescindido)
   document.addEventListener("change", async (ev) => {
