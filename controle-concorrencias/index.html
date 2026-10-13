@@ -1966,7 +1966,7 @@ ${eap.txt}`;
   const curElos = () => ({ links: [...(S.elos?.links || [])], rej: [...(S.elos?.rej || [])], just: [...(S.elos?.just || [])], errados: [...(S.elos?.errados || [])] });
   const semMov = (d) => !(d.sec > 0) && !/Cancel|Rescind/i.test(d.sit);
   const errBtn = (d, cid) => semMov(d) ? ` <button class="btn danger" type="button" data-el="errado" data-doc="${esc(d.id)}" data-cot="${esc(cid || "")}" title="O documento sai das ligações e vai para a lista de exclusão">Pedido errado (excluir no Sienge)</button>` : "";
-  const JUST = { financeiro: "Lançado direto no financeiro", semPedido: "Não gerou pedido" };
+  const JUST = { financeiro: "Lançado direto no financeiro", semPedido: "Não gerou pedido", foraObra: "Pago fora do custo da obra" };
   const justOf = (cid) => (S.elos?.just || []).find((j) => j.cot === cid) || null;
   function elosLink(e, docId, cotId, opt = {}) {
     // opt.keep: o documento continua nas outras cotações (soma de cotações / aditivo); opt.parte: quanto desta cotação está nele
