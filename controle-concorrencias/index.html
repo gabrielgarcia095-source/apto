@@ -1973,7 +1973,7 @@ ${eap.txt}`;
     try { await S.db.doc("config/elos").set(next); S.elos = next; if (msgEl) { msgEl.className = "msg"; msgEl.textContent = ok; } }
     catch (e) { if (msgEl) { msgEl.className = "msg err"; msgEl.textContent = errText(e); } }
   }
-  const curElos = () => ({ links: [...(S.elos?.links || [])], rej: [...(S.elos?.rej || [])], just: [...(S.elos?.just || [])], errados: [...(S.elos?.errados || [])] });
+  const curElos = () => ({ links: [...(S.elos?.links || [])], rej: [...(S.elos?.rej || [])], just: [...(S.elos?.just || [])], errados: [...(S.elos?.errados || [])], foraOrc: [...(S.elos?.foraOrc || [])] });
   const semMov = (d) => !(d.sec > 0) && !/Cancel|Rescind/i.test(d.sit);
   const errBtn = (d, cid) => semMov(d) ? ` <button class="btn danger" type="button" data-el="errado" data-doc="${esc(d.id)}" data-cot="${esc(cid || "")}" title="O documento sai das ligações e vai para a lista de exclusão">Pedido errado (excluir no Sienge)</button>` : "";
   const JUST = { financeiro: "Lançado direto no financeiro", semPedido: "Não gerou pedido", foraObra: "Pago fora do custo da obra" };
@@ -2018,6 +2018,8 @@ ${eap.txt}`;
       e.errados.push({ doc, cot: cot || null, em: new Date().toISOString() });
       return saveElos(e, msg, `${doc} marcado para excluir no Sienge.`);
     }
+    if (act === "foraorc") { const obs = prompt(`${doc}: o que é? (fica fora do orçamento)`, "") ?? ""; e.foraOrc = e.foraOrc.filter((x) => x.doc !== doc); e.foraOrc.push({ doc, obs: obs.trim(), em: new Date().toISOString() }); return saveElos(e, $("ped-msg"), `${doc}: marcado como sem cotação (fora do orçamento).`); }
+    if (act === "unforaorc") { e.foraOrc = e.foraOrc.filter((x) => x.doc !== doc); return saveElos(e, $("ped-msg"), `${doc} voltou para "Pedidos sem cotação".`); }
     if (act === "unerrado") { e.errados = e.errados.filter((x) => x.doc !== doc); return saveElos(e, $("ped-msg"), `${doc} voltou para a conferência.`); }
     if (act === "names") {
       const antes = { links: [...e.links], rej: [...e.rej] };
@@ -2083,7 +2085,8 @@ ${eap.txt}`;
       } else if (r.sugestoes.length) sug.push({ ...row, s: r.sugestoes });
       else if (c.valor > 0) (row.j ? just : sem).push(row); // valor negativo = devolução ao orçamento (DV): não precisa de pedido
     }
-    const livres = docs.filter((d) => !linkedDocs.has(d.id));
+    const fora = new Set((S.elos?.foraOrc || []).map((x) => x.doc));   // sem cotação: fica fora do orçamento (marcado por você)
+    const livres = docs.filter((d) => !linkedDocs.has(d.id) && !fora.has(d.id));
     const ord = (a, b) => (a.c.ordem ?? 0) - (b.c.ordem ?? 0);
     return { ok: ok.sort(ord), sug: sug.sort(ord), sem: sem.sort(ord), just: just.sort(ord), canc: canc.sort(ord), livres, errados };
   }
@@ -2356,7 +2359,8 @@ ${eap.txt}`;
     if (S.rasF === "livres" && !q && K.P) {
       const L = K.P.livres.slice().sort((a, b) => parseDate(b.data) - parseDate(a.data));
       box.innerHTML = `<p class="hint">Pedidos e contratos do Sienge que não estão ligados a nenhuma cotação. Digite o nº da cotação para ligar, ou marque como lançado errado.</p>` +
-        tbl(["Pedido / contrato", "Valor", "Vincular à cotação nº"], L.map((d) => `<tr><td>${docLine(d)}${fatDir(d) ? `<div class="hint"><b>Faturamento direto:</b> informe a cotação do contrato que ele abate e use o botão "Faturamento direto".</div>` : ""}</td><td class="r num">${fmt(d.prim)}</td><td><div class="row"><input id="lk-cot-${d.id.replace(/\W/g, "_")}" placeholder="Nº da cotação" style="width:8rem"><button class="btn" type="button" data-el="doc2cot" data-doc="${esc(d.id)}">Vincular</button><button class="btn" type="button" data-el="doc2cotfd" data-doc="${esc(d.id)}" title="Pedido de abatimento: liga sem somar no aprovado">Faturamento direto</button>${errBtn(d)}</div></td></tr>`), "Todos os pedidos e contratos estão ligados a uma cotação.");
+        tbl(["Pedido / contrato", "Valor", "Vincular à cotação nº"], L.map((d) => `<tr><td>${docLine(d)}${fatDir(d) ? `<div class="hint"><b>Faturamento direto:</b> informe a cotação do contrato que ele abate e use o botão "Faturamento direto".</div>` : ""}</td><td class="r num">${fmt(d.prim)}</td><td><div class="row"><input id="lk-cot-${d.id.replace(/\W/g, "_")}" placeholder="Nº da cotação" style="width:8rem"><button class="btn" type="button" data-el="doc2cot" data-doc="${esc(d.id)}">Vincular</button><button class="btn" type="button" data-el="doc2cotfd" data-doc="${esc(d.id)}" title="Pedido de abatimento: liga sem somar no aprovado">Faturamento direto</button><button class="btn" type="button" data-el="foraorc" data-doc="${esc(d.id)}" title="Não tem cotação: fica fora do orçamento">Sem cotação</button>${errBtn(d)}</div></td></tr>`), "Todos os pedidos e contratos estão ligados a uma cotação.") +
+        ((S.elos?.foraOrc || []).length ? `<h3 style="margin:14px 0 6px">Sem cotação (fora do orçamento)</h3>` + tbl(["Pedido / contrato", "Valor", ""], (S.elos.foraOrc || []).map((x) => { const d = allDocs().find((y) => y.id === x.doc); return `<tr><td>${d ? docLine(d) : `<b>${esc(x.doc)}</b>`}${x.obs ? `<div class="hint">${esc(x.obs)}</div>` : ""}</td><td class="r num">${d ? fmt(d.prim) : ""}</td><td><button class="btn" type="button" data-el="unforaorc" data-doc="${esc(x.doc)}">Desfazer</button></td></tr>`; }), "") : "");
       S.rasView = []; return;
     }
     if (S.rasF === "errados" && !q && K.P) {
