@@ -850,9 +850,41 @@ tr.detail > td { background: var(--bg); padding: 12px 14px 16px; box-shadow: ins
   // ---------- exportação ----------
   // Só as cotações que ainda não aparecem na planilha de orçamento, no formato da aba LANÇAMENTOS
   // Todas as linhas que ainda faltam na planilha de orçamento, já na ordem das colunas D a G da aba LANÇAMENTOS
+  // no filtro "Devolver ao orçamento": copia as linhas "DV <nº>" (valor negativo, nas mesmas linhas da EAP)
+  // e registra as cotações DV que faltam, para o site somar a devolução ao lançado depois que a planilha voltar
+  async function copiaDev(m) {
+    const K = rasCats(), r2 = (v) => Math.round(v * 100) / 100;
+    const rows = resRows().filter(K.C.dev).sort((a, b) => numOrd(b.c) - numOrd(a.c) || (b.c.ordem ?? 0) - (a.c.ordem ?? 0));
+    if (!rows.length) { m.textContent = "Nada para devolver ao orçamento."; return; }
+    const linhas = [], novas = [], semEap = [], usados = new Set([...S.cot.values()].map((c) => key(c.num)));
+    for (const x of rows) {
+      let num, ls;
+      if (x.dvPend?.length) { const d = S.cot.get(x.dvPend[0].id) || x.dvPend[0]; num = d.num; ls = d.qc?.lancamentos || []; }
+      else {
+        const valor = -r2(x.ajuste);
+        num = "DV " + x.c.num; for (let i = 2; usados.has(key(num)); i++) num = `DV ${x.c.num} (${i})`; usados.add(key(num));
+        const qc = herdaEap(x, valor); ls = qc?.lancamentos || [];
+        const docs = x.docs.map((d) => `${d.d.id} (${d.d.sit})`).join(", ");
+        novas.push({ num, desc: `DEVOLUÇÃO DE SALDO ${x.c.desc}`.slice(0, 120), valor, formula: null, ordem: (x.c.ordem || 0) + 0.02, atualizadoEm: new Date().toISOString(), qc,
+          obs: `Cotação ${x.c.num} encerrada: lançado ${fmt(x.c.lanc)}, consumido ${fmt(x.consumido)} (${docs}). Registrado pelo site em ${new Date().toLocaleDateString("pt-BR")}.` });
+      }
+      if (!ls.length) { semEap.push(num); ls = [{ item: "", descricao: `DEVOLUÇÃO DE SALDO ${x.c.desc}`.toUpperCase(), valor: -r2(x.ajuste) }]; }
+      linhas.push(sugTsv(ls, num));
+    }
+    const n = linhas.join("\n").split("\n").length;
+    await copyText(linhas.join("\n"), m);
+    let reg = "";
+    if (novas.length && S.db) {
+      try { for (const d of novas) await S.db.collection("cotacoes").doc().set(d); reg = ` ${novas.length} devolução(ões) registrada(s) no site como "DV <nº>".`; }
+      catch (e) { reg = ` Não consegui registrar as devoluções no site: ${errText(e)}.`; }
+    }
+    if (!m.querySelector("textarea")) m.textContent = `${n} linha(s) de devolução copiada(s) (${rows.length} cotações, ${fmt(rows.reduce((t, x) => t + x.ajuste, 0))}). Cole na coluna D (ITEM) da aba LANÇAMENTOS, na primeira linha livre (vai de D a G); os valores vão negativos.${reg}${semEap.length ? ` Atenção: ${semEap.length} sem linha da planilha foram com a coluna D em branco (${semEap.slice(0, 8).join(", ")}${semEap.length > 8 ? "…" : ""}).` : ""}`;
+  }
   $("btn-copia").addEventListener("click", () => {
     const m = $("top-msg"); m.className = "msg";
-    const falta = D.rows.filter((x) => x.st === "FALTA LANÇAR").sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+    if (S.rasF === "dev" && !$("ras-q").value.trim()) return copiaDev(m);
+    // devoluções (DV, valor negativo) saem pelo botão do filtro "Devolver ao orçamento", para não colar duas vezes
+    const falta = D.rows.filter((x) => x.st === "FALTA LANÇAR" && !(x.valor < 0)).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
     const linhas = [], semSug = [], naoConf = new Set();
     for (const x of falta) {
       const ls = (x.qc?.lancamentos || []).filter((l) => leafOk(l.eap));
@@ -1548,6 +1580,7 @@ ${eap.txt}`;
       res.get(l.cot).certos.push({ doc: d, por: l.fd ? "faturamento direto do contrato (confirmado por você)" : "confirmado por você", manual: true, parte: l.parte ?? null, fd: !!l.fd }); usedDoc.add(l.doc);
     }
     const linkedCot = new Set([...res.entries()].filter(([, r]) => r.certos.length).map(([k]) => k));
+    cotList = cotList.filter((c) => !(c.valor < 0)); // devoluções "DV <nº>" (valor negativo) não recebem pedido automático
     const free = docs.filter((d) => !usedDoc.has(d.id));
     const isRej = (d, c) => (rej[d.id] || []).includes(c.id);
     const mexida = new Set(Object.values(rej).flat()); // cotações em que você já descartou algum documento
@@ -2297,6 +2330,7 @@ ${eap.txt}`;
     if (extra.descart) chips.push(["descart", "Sugestões descartadas"]);
     if (A) chips.push(["fin", "Notas sem pedido"]);
     const q = $("ras-q").value.trim();
+    $("btn-copia").textContent = S.rasF === "dev" && !q ? "Copiar devoluções ao orçamento" : "Copiar o que falta lançar";
     $("ras-chips").innerHTML = chips.map(([k, l, v]) => `<button type="button" class="chip" data-rasf="${k}" aria-pressed="${!q && S.rasF === k}">${l} <span class="num">${k in extra ? extra[k] : base.filter(test(k)).length}</span>${v ? ` <span class="num hint">${fmt(v)}</span>` : ""}</button>`).join("");
     if (S.rasF === "livres" && !q && K.P) {
       const L = K.P.livres.slice().sort((a, b) => parseDate(b.data) - parseDate(a.data));
