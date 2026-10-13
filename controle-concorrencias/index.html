@@ -2093,9 +2093,10 @@ ${eap.txt}`;
     // pagamentos do financeiro (sem pedido) ligados à cotação pelo credor: folha, PJ sem contrato
     // (previsões PRV/PPC/PCT, guias e caução ficam de fora)
     const finCred = new Map();
-    if (S.nfMeta && S.finCot) for (const r of nfAnalise().semDoc) { if (/^(PRV|GUIA|CAU|PPC|PCT)$/.test(nfTipo(r[2]))) continue; (finCred.get(r[1]) || finCred.set(r[1], []).get(r[1])).push(r); }
+    const finTit = new Map();   // nota avulsa ligada pela chave do título (config/fincot: tits)
+    if (S.nfMeta && S.finCot) for (const r of nfAnalise().semDoc) { if (/^(PRV|GUIA|CAU|PPC|PCT)$/.test(nfTipo(r[2]))) continue; (finCred.get(r[1]) || finCred.set(r[1], []).get(r[1])).push(r); finTit.set(titKey(r), r); }
     return D.rows.filter((c) => !(c.valor < 0) && !c.ajusteDe).map((c) => {
-      const fc = S.finCot?.[c.id], finTits = fc ? (fc.credores || []).flatMap((k) => finCred.get(k) || []).sort((a, b) => parseDate(a[5]) - parseDate(b[5])) : [];
+      const fc = S.finCot?.[c.id], finTits = fc ? [...new Set([...(fc.credores || []).flatMap((k) => finCred.get(k) || []), ...(fc.tits || []).map((k) => finTit.get(k)).filter(Boolean)])].sort((a, b) => parseDate(a[5]) - parseDate(b[5])) : [];
       const finTot = r2(finTits.reduce((t, r) => t + (r[7] || 0), 0));
       const certos = temDocs() ? elosOf(c.id).certos.filter((e) => !e.fd) : [];
       let comprado = 0, consumido = 0, notas = 0;
@@ -2126,7 +2127,7 @@ ${eap.txt}`;
       const nada = sit === "enc" && docs.every((x) => /Cancel|Rescind/i.test(x.d.sit) && !(x.uso > 0));
       const ajuste = sit === "enc" ? r2(lanc - consumido) : null;      // + volta ao orçamento, − falta
       const aConsumir = sit === "and" ? r2(comprado - consumido) : null;   // negativo: já passou do pedido/contrato
-      return { c: { ...c, lanc }, fin: finTits.length ? { tits: finTits, total: finTot, obs: fc.obs || "" } : null, dvPend: dvs.filter((d) => !d.lanc), docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
+      return { c: { ...c, lanc }, fin: finTits.length ? { tits: finTits, total: finTot, obs: fc.obs || "", porNota: !(fc.credores || []).length } : null, dvPend: dvs.filter((d) => !d.lanc), docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
     });
   }
   // estouro = consumido acima do comprado (pedido/contrato). Registrar vira uma cotação "AD" ligada ao mesmo documento,
@@ -2277,7 +2278,7 @@ ${eap.txt}`;
       s2 += `<div class="row" style="margin-top:6px"><input list="doc-dl" id="lk-doc-${esc(cid)}" placeholder="${ligados.length ? "+ outro pedido/contrato" : "PC 1234 ou CT/150"}" style="width:14rem"><button class="btn" type="button" data-el="add" data-cot="${esc(cid)}">Vincular</button></div><div class="msg" id="el-msg-${esc(cid)}"></div>`;
     }
     // 3 · notas
-    const finHtml = x.fin ? `<div class="ras-doc"><div><b>Pagamentos no financeiro ligados a esta cotação</b> <span class="hint">pelo nome do credor${x.fin.obs ? ` · ${esc(x.fin.obs)}` : ""}</span></div>` +
+    const finHtml = x.fin ? `<div class="ras-doc"><div><b>Pagamentos no financeiro ligados a esta cotação</b> <span class="hint">${x.fin.porNota ? "nota ligada por você" : "pelo nome do credor"}${x.fin.obs ? ` · ${esc(x.fin.obs)}` : ""}</span></div>` +
       (x.fin.tits.length > 8 ? `<details><summary class="hint">ver os ${x.fin.tits.length} lançamentos (total ${fmt(x.fin.total)})</summary>` : "") +
       `<table class="ras-t"><thead><tr><th>Documento</th><th>Data</th><th>Credor</th><th class="r">Valor</th></tr></thead><tbody>` +
       x.fin.tits.map((r) => `<tr><td class="num">${esc(r[2])}</td><td class="num">${esc(r[5])}</td><td>${esc(r[1].replace(/^\d+\s*-\s*/, ""))}</td><td class="r num">${fmt(r[7])}</td></tr>`).join("") +
@@ -2315,7 +2316,12 @@ ${eap.txt}`;
     const descart = (S.elos?.rej || []).filter((l) => S.cot.get(l.cot));
     // credores já ligados a uma cotação (folha, PJ sem contrato) saem de "Notas sem pedido"
     const credLig = new Set(Object.values(S.finCot || {}).flatMap((v) => v.credores || []));
-    const credSem = A ? A.credores.filter((g) => !credLig.has(g.credor)) : [];
+    const titLig = new Set(Object.values(S.finCot || {}).flatMap((v) => v.tits || []));
+    const credSem = A ? A.credores.filter((g) => !credLig.has(g.credor)).map((g) => {
+      if (!g.tits.some((r) => titLig.has(titKey(r)))) return g;
+      const tits = g.tits.filter((r) => !titLig.has(titKey(r)));
+      return { ...g, tits, total: Math.round(tits.reduce((t, r) => t + (r[7] || 0), 0) * 100) / 100 };
+    }).filter((g) => g.tits.length) : [];
     const extra = { livres: K.P?.livres.length, errados: K.P?.errados.length, descart: descart.length, fin: A ? credSem.length + A.fora.length : 0 };
     if (K.P) chips.push(["livres", "Pedidos sem cotação"]);
     if (extra.errados) chips.push(["errados", "A excluir no Sienge"]);
