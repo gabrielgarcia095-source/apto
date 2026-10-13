@@ -1866,7 +1866,7 @@ ${eap.txt}`;
       for (let i = 0; i < (S.itMeta.partes ?? 0); i++) for (const r of S.itParts.get(`parte-${i}`) || []) {
         if (r[8] == null) continue; // importado antes de guardar fornecedor/entregue: use o PDF
         const tot = r[6] || 0, ent = r[9] || 0, pend = r[10] || 0;
-        const sit = pend > 0.009 ? (ent > 0 ? "Parcialmente entregue" : "Pendente") : ent >= tot - 0.009 ? "Totalmente atendido" : "Cancelado";
+        const sit = r[11] === false ? "Não aprovado" : pend > 0.009 ? (ent > 0 ? "Parcialmente entregue" : "Pendente") : ent >= tot - 0.009 ? "Totalmente atendido" : "Cancelado";
         out.push({ tipo: "PC", id: "PC " + r[0], num: String(r[0]), data: r[1], forn: limpa(r[8]), prim: tot, sec: ent, sit, saldo: pend });
       }
       if (!out.length) out.push(...pdf.PC.values());
@@ -1914,7 +1914,7 @@ ${eap.txt}`;
       ` <span class="hint">(${lbl2} <span class="num">${fmt(d.sec)}</span>)</span> <span class="pill ${sitCls(d.sit)}">${esc(d.sit)}</span>` +
       (semEntrega(d) ? ` <span class="pill s-DIVERGENCIA">nada ${lbl2}</span>` : saldoCanc(d) > 0.009 ? ` <span class="hint neg">saldo cancelado ${fmt(saldoCanc(d))}</span>` : "") + itensBox(d);
   }
-  // itens do pedido (relatório "Relação de Pedidos de Compra"): [nº, data, comprador, frete, outras, desconto, total, [[insumo, qtd, un, preço, valor, qt entregue]]]
+  // itens do pedido (relatório "Relação de Pedidos de Compra"): [nº, data, comprador, frete, outras, desconto, total, [[insumo, qtd, un, preço, valor, qt entregue]], fornecedor, entregue, pendente, aprovado (false = "Autorização: Não")]
   function itensOf(d) {
     if (d.tipo !== "PC" || !S.itMeta) return null;
     if (!S.itMap) { S.itMap = new Map(); for (let i = 0; i < (S.itMeta.partes ?? 0); i++) for (const r of S.itParts.get(`parte-${i}`) || []) S.itMap.set(String(r[0]), r); }
@@ -1940,7 +1940,7 @@ ${eap.txt}`;
       else if (k === "Total pendente" && cur) cur[10] = num(r.slice(1).find((v) => String(v).trim() !== "") ?? 0);
       else if (k === "Total entregue" && cur) cur[9] = num(r.slice(1).find((v) => String(v).trim() !== "") ?? 0);
       else if (k === "Desconto" && cur) { cur[5] = num(at("Desconto")); cur[4] = num(at("Outras despesas")); cur[3] = num(at("Total do frete")); }
-      else if (k === "Total do pedido" && cur) cur[6] = num(at("Total do pedido"));
+      else if (k === "Total do pedido" && cur) { cur[6] = num(at("Total do pedido")); const a = String(at("Autorização")).trim(); if (/^n[aã]o$/i.test(a)) cur[11] = false; }
       else if (k === "Insumo") { col = {}; r.forEach((v, i) => { const t = String(v).trim(); if (t && !(t in col)) col[t] = i; }); }
       else if (/^Total entregue dos pedidos/i.test(k)) total = num(r.slice(1).find((v) => String(v).trim() !== ""));
       else if (cur && col && /^\d+\s*-\s*/.test(k)) cur[7].push([k.replace(/^\d+\s*-\s*/, "").replace(/\s+/g, " ").trim(), num(r[col["Quantidade"]]), String(r[col["Un."]] ?? "").trim(), num(r[col["Preço"]]), num(r[col["Valor líquido"]]), num(r[col["Qt. entregue"]])]);
