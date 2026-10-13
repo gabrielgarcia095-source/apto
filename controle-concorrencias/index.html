@@ -1886,7 +1886,11 @@ ${eap.txt}`;
       }
       if (!out.length) out.push(...pdf.PC.values());
       // pedidos que existem no Sienge mas não vieram na Relação de Pedidos (ex.: PC 908): ficam com os dados do relatório de pedidos (PDF)
-      else { const tem = new Set(out.map((d) => d.id)); for (const d of pdf.PC.values()) if (!tem.has(d.id) && d.prim > 0) out.push({ ...d, soPdf: true }); }
+      // só os que tiveram entrega ou nota: pedido sem movimento que sumiu da Relação foi excluído (ou não importa)
+      else {
+        const tem = new Set(out.map((d) => d.id)), comNota = new Set(S.nfMeta ? nfRows().flatMap(nfIds) : []);
+        for (const d of pdf.PC.values()) if (!tem.has(d.id) && d.prim > 0 && (d.sec > 0 || comNota.has(d.id))) out.push({ ...d, soPdf: true });
+      }
     } else out.push(...pdf.PC.values());
     if (novo(S.exMeta, S.docMeta.CT)) {
       const marc = S.situacao || {};
