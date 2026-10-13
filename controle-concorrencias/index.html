@@ -1870,6 +1870,8 @@ ${eap.txt}`;
         out.push({ tipo: "PC", id: "PC " + r[0], num: String(r[0]), data: r[1], forn: limpa(r[8]), prim: tot, sec: ent, sit, saldo: pend });
       }
       if (!out.length) out.push(...pdf.PC.values());
+      // pedidos que existem no Sienge mas não vieram na Relação de Pedidos (ex.: PC 908): ficam com os dados do relatório de pedidos (PDF)
+      else { const tem = new Set(out.map((d) => d.id)); for (const d of pdf.PC.values()) if (!tem.has(d.id) && d.prim > 0) out.push({ ...d, soPdf: true }); }
     } else out.push(...pdf.PC.values());
     if (novo(S.exMeta, S.docMeta.CT)) {
       const marc = S.situacao || {};
