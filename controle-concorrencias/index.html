@@ -2131,7 +2131,7 @@ ${eap.txt}`;
       const nada = sit === "enc" && docs.length > 0 && docs.every((x) => /Cancel|Rescind/i.test(x.d.sit) && !(x.uso > 0));
       const ajuste = sit === "enc" ? r2(lanc - consumido) : null;      // + volta ao orçamento, − falta
       const aConsumir = sit === "and" ? r2(comprado - consumido) : null;   // negativo: já passou do pedido/contrato
-      return { c: { ...c, lanc }, fin: finTits.length ? { tits: finTits, total: finTot, obs: fc.obs || "", porNota: !(fc.credores || []).length } : null, dvPend: dvs.filter((d) => !d.lanc), docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
+      return { c: { ...c, lanc, lancBruto: c.lanc, ajLanc: r2(dvs.reduce((t, d) => t + (d.lanc || 0), 0)) }, fin: finTits.length ? { tits: finTits, total: finTot, obs: fc.obs || "", porNota: !(fc.credores || []).length } : null, dvPend: dvs.filter((d) => !d.lanc), docs, comprado, consumido, notas: r2(notas), sit, ajuste, aConsumir, j, nada, rep: nk > 1, linhas: D.confBy.get(c.k)?.linhas || [] };
     });
   }
   // estouro = consumido acima do comprado (pedido/contrato). Registrar vira uma cotação "AD" ligada ao mesmo documento,
@@ -2248,7 +2248,7 @@ ${eap.txt}`;
     // contrato com medição feita e ainda não liberada: não é erro, só espera a nota
     const liberar = (x) => x.docs.some((d) => linhaDe.get(d.d.id)?.st === "liberar");
     const C = {
-      lancar: (x) => (x.c.valor > 0 && !(x.c.lanc > 0)) || !!x.dvPend?.length,
+      lancar: (x) => (x.c.valor > 0 && !(x.c.lancBruto > 0)) || !!x.dvPend?.length,
       conf: (x) => sug.has(x.c.id),
       sem: (x) => x.sit === "sem" && !x.j && !sug.has(x.c.id) && x.c.valor > 0,
       notas: nfRuim,
@@ -2371,7 +2371,7 @@ ${eap.txt}`;
     const tags = (x) => [K.C.lancar(x) ? `<span class="ras-tag bad">falta lançar no orçamento</span>` : "", K.C.conf(x) ? `<span class="ras-tag">confirmar pedido</span>` : "",
       K.C.notas(x) ? `<span class="ras-tag">notas a conferir</span>` : K.liberar(x) ? `<span class="ras-tag ok">medição a liberar</span>` : "", estouro(x) > 0 ? (cabeOrc(x) ? `<span class="ras-tag">passou do pedido ${fmt(estouro(x))} (cabe no orçamento)</span>` : `<span class="ras-tag bad">estouro ${fmt(estouro(x))}</span>`) : "",
       origemDe(x.c.num) ? `<span class="ras-tag ok">${origemDe(x.c.num).tipo === "AD" ? "aditivo" : "devolução"} da ${esc(origemDe(x.c.num).orig)}</span>` : ""].join("");
-    const orc = (x) => x.c.lanc ? `<span class="num">${fmt(x.c.lanc)}</span>${Math.abs(x.c.lanc - (x.c.valor || 0)) >= 1 ? `<div class="hint">≠ aprovado</div>` : ""}` : `<span class="neg">não lançado</span>`;
+    const orc = (x) => !x.c.lanc && x.c.lancBruto > 0 ? `<span class="num">${fmt(0)}</span><div class="hint">lançado ${fmt(x.c.lancBruto)}, devolvido ${fmt(-x.c.ajLanc)}</div>` : x.c.lanc ? `<span class="num">${fmt(x.c.lanc)}</span>${Math.abs(x.c.lanc - (x.c.valor || 0)) >= 1 ? `<div class="hint">≠ aprovado</div>` : ""}` : `<span class="neg">não lançado</span>`;
     const ped = (x) => !x.docs.length && x.fin ? `<span class="hint">sem pedido · pago pelo financeiro</span>` : !x.docs.length ? (K.C.conf(x) ? `<span class="hint">sugestão: ${esc(K.sug.get(x.c.id).s.map((s) => s.doc.id).join(", "))}</span>` : x.c.valor > 0 ? `<span class="neg">sem pedido</span>` : "—")
       : x.docs.map((d) => `<div><b class="num">${esc(d.d.id)}</b> <span class="num">${fmt(d.d.prim)}</span>${d.parte != null && Math.abs(d.parte - d.d.prim) >= 1 ? `<span class="hint"> (desta cotação ${fmt(d.parte)})</span>` : ""}<div class="hint">${esc(d.d.forn)} · ${esc(d.d.sit)}</div></div>`).join("");
     const nfs = (x, notas) => (x.fin ? `<div><b>${x.fin.tits.length} pagto${x.fin.tits.length > 1 ? "s" : ""}</b> · <span class="num">${fmt(x.fin.total)}</span><div class="hint">no financeiro</div></div>` : "") + (!x.docs.length ? (x.fin ? "" : "—") : x.docs.map((d) => {
