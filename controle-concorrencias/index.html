@@ -2354,7 +2354,8 @@ ${eap.txt}`;
       box.innerHTML = `<p class="hint">Notas sem nº de pedido/contrato (lançadas direto no financeiro, guias, folha etc.), por credor.</p>` +
         tbl(["Credor", "Notas", "Total"], credSem.map((g) => `<tr><td>${esc(g.credor.replace(/^\d+\s*-\s*/, ""))}${g.cobre ? `<div class="hint" style="color:var(--ok)">completa as notas do ${esc(g.cobre)}</div>` : ""}${lista(g.tits)}</td><td class="r num">${g.tits.length}</td><td class="r num">${fmt(g.total)}</td></tr>`), "Nenhuma.") +
         (A.fora.length ? `<h3 style="margin:14px 0 6px">Notas que citam pedido/contrato fora dos relatórios importados</h3>` +
-          tbl(["Pedido / contrato citado", "Notas", "Total"], A.fora.map((f) => `<tr><td><b class="num">${esc(f.id)}</b> · ${esc(f.tits[0][1].replace(/^\d+\s*-\s*/, ""))}${lista(f.tits)}</td><td class="r num">${f.tits.length}</td><td class="r num">${fmt(f.total)}</td></tr>`), "") : "");
+          tbl(["Pedido / contrato citado", "Notas", "Total"], A.fora.map((f) => `<tr><td><b class="num">${esc(f.id)}</b> · ${esc(f.tits[0][1].replace(/^\d+\s*-\s*/, ""))}${lista(f.tits)}</td><td class="r num">${f.tits.length}</td><td class="r num">${fmt(f.total)}</td></tr>`), "") : "") +
+        (A.dupRows.length ? `<p class="hint" style="margin-top:10px">Lançamentos duplicados, que não contam: ${A.dupRows.map((r) => `${esc(r[1].replace(/^\d+\s*-\s*/, ""))} ${esc(r[2])} ${fmt(r[7])}`).join(" · ")}${S.explicados._duplicadas.obs ? ` (${esc(S.explicados._duplicadas.obs)})` : ""}.</p>` : "");
       S.rasView = []; return;
     }
     const rows = q ? all : all.filter(({ x }) => test(S.rasF)(x));
@@ -2652,7 +2653,9 @@ ${eap.txt}`;
       if (viaEx) x.viaEx = (x.viaEx || 0) + parte;
     };
     const nk = (n) => [...toks(String(n).replace(/^[\d.\s-]+/, ""))].slice(0, 2).join(" ");
+    const dup = new Set(S.explicados?._duplicadas?.fin || []), dupRows = [];   // lançamentos em dobro que você marcou: não contam
     for (const r of rows) {
+      if (dup.has(titKey(r))) { dupRows.push(r); continue; }
       // caução retida de uma nota ("NFE /13/CAUCAO"): é do contrato daquela nota, e conta como caução, não como nota
       const cauDe = String(r[2]).match(/^(.*?)\s*\/\s*CAU[CÇ][AÃ]O\s*$/i);
       let ids = nfIds(r), viaEx = false; const t = cauDe ? "CAU" : nfTipo(r[2]), v = r[7] || 0;
@@ -2752,7 +2755,7 @@ ${eap.txt}`;
       g.total = r2(g.total + (r[7] || 0)); g.tits.push(r); g.orig.add(r[3]);
       if (!g.cobre) g.cobre = finPor.get(nomeKey(k))?.usado || null;
     }
-    const out = { rows, linhas, semDoc: semDoc.filter((r) => !usadas.has(r)), credores: [...credores.values()].sort((a, b) => b.total - a.total), fora: [...fora.entries()].map(([id, tits]) => ({ id, tits, total: r2(tits.reduce((t, r) => t + (r[7] || 0), 0)) })) };
+    const out = { dupRows, rows, linhas, semDoc: semDoc.filter((r) => !usadas.has(r)), credores: [...credores.values()].sort((a, b) => b.total - a.total), fora: [...fora.entries()].map(([id, tits]) => ({ id, tits, total: r2(tits.reduce((t, r) => t + (r[7] || 0), 0)) })) };
     nfCache = { v: S.nfVer, d: S.docVer, e: S.elos, c: S.cot, x: S.exVer, i: S.itParts, ex: S.explicados, out };
     return out;
   }
