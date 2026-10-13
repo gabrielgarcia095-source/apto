@@ -453,21 +453,22 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
         : `<div class="addrow"><button type="button" class="link" data-addopen="${esc(g.nome)}">+ adicionar pessoa</button></div>`) : "";
       return `<div class="sheet" id="bloco-${gi}" data-bloco="${esc(g.nome)}">
         <div class="bhead"><h2>${esc(g.nome === VISIT ? "Visitantes (sem fornecedor)" : g.nome)}</h2>
-          <span class="cnt"><span>Previsto <b>${g.prev}</b></span><span>Presente <b>${g.ok}</b></span><span class="${g.falta ? "f" : ""}">Falta <b>${g.falta}</b></span></span></div>
+          <span class="cnt">${g.nome === VISIT ? `<span>Presente <b>${g.extra}</b></span>` : `<span>Previsto <b>${g.prev}</b></span><span>Presente <b>${g.ok}</b></span><span class="${g.falta ? "f" : ""}">Falta <b>${g.falta}</b></span>`}</span></div>
         <div class="tablewrap"><table><thead><tr><th class="n">Nº</th><th>Nome</th><th>Função</th><th class="c">Previsto</th><th class="c">Presença</th><th></th></tr></thead>
         <tbody>${linhas || `<tr><td colspan="6" class="muted">Ninguém cadastrado.</td></tr>`}
         <tr class="efetivo"><td></td><td colspan="2">Efetivo ${esc(g.nome === VISIT ? "visitantes" : g.nome)}</td><td class="c num">${g.prev}</td><td class="c num">${g.ok + g.extra}</td><td></td></tr></tbody></table></div>${add}</div>`;
     }).join("") + (edita ? `<form class="row" id="add-forn"><input type="text" id="new-forn" placeholder="Novo fornecedor" aria-label="Novo fornecedor"><button type="submit">Adicionar fornecedor</button></form>` : "");
 
     const pct = tot.prev ? Math.round((tot.ok / tot.prev) * 100) : 0;
+    const vis = lista.find((g) => g.nome === VISIT)?.extra || 0;
     const hora = d.importadoEm ? new Date(d.importadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
-    $("quadro").innerHTML = `<div class="qhead"><span class="eyebrow">${semana(S.dia)} ${fmtDia(S.dia)}</span><span class="muted" style="font-size:.8rem">Catraca importada ${hora}${tot.extra ? ` · ${tot.extra} presente(s) sem estar previsto` : ""}</span></div>
+    $("quadro").innerHTML = `<div class="qhead"><span class="eyebrow">${semana(S.dia)} ${fmtDia(S.dia)}</span><span class="muted" style="font-size:.8rem">Catraca importada ${hora}${tot.extra - vis ? ` · ${tot.extra - vis} presente(s) sem estar previsto` : ""}</span></div>
       <div class="big"><div><span class="eyebrow">Previsto</span><b>${tot.prev}</b></div><div class="ok"><span class="eyebrow">Presente</span><b>${tot.ok}</b></div><div class="bad"><span class="eyebrow">Falta</span><b>${tot.falta}</b></div></div>
       <div class="tablewrap"><table><thead><tr><th>Fornecedor</th><th class="n">Previsto</th><th class="n">Presente</th><th class="n">Falta</th></tr></thead><tbody>
-      ${lista.map((g, gi) => g.pessoas.length || g.nome !== VISIT ? `<tr class="${g.prev || g.ok || g.extra ? "" : "zero"}"><td><button type="button" data-ir="${gi}">${esc(g.nome === VISIT ? "Visitantes" : g.nome)}</button></td><td class="n">${g.prev}</td><td class="n">${g.ok}</td><td class="n${g.falta ? " bad" : ""}">${g.falta}</td></tr>` : "").join("")}
+      ${lista.map((g, gi) => g.pessoas.length || g.nome !== VISIT ? `<tr class="${g.prev || g.ok || g.extra ? "" : "zero"}"><td><button type="button" data-ir="${gi}">${esc(g.nome === VISIT ? "Visitantes" : g.nome)}</button></td>${g.nome === VISIT ? `<td class="n">–</td><td class="n">${g.extra}</td><td class="n">–</td>` : `<td class="n">${g.prev}</td><td class="n">${g.ok}</td><td class="n${g.falta ? " bad" : ""}">${g.falta}</td>`}</tr>` : "").join("")}
       <tr class="total"><td>TOTAL GERAL</td><td class="n">${tot.prev}</td><td class="n">${tot.ok}</td><td class="n">${tot.falta}</td></tr></tbody></table></div>
       <div class="qacts"><button type="button" id="btn-copy">Copiar resumo</button>${S.dl ? `<button type="button" id="btn-xlsx">Baixar planilha</button>` : ""}</div>
-      <div class="muted" style="padding:0 12px 12px;font-size:.8rem">${pct}% dos previstos presentes.</div>`;
+      <div class="muted" style="padding:0 12px 12px;font-size:.8rem">${pct}% dos previstos presentes.${vis ? ` Visitantes (${vis}) não entram no total geral.` : ""}</div>`;
   }
 
   function renderHist() {
@@ -560,7 +561,7 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
     const d = S.dias.get(S.dia); if (!d) return "";
     const { lista, tot } = calcDia(d);
     const linhas = [`EFETIVO ${fmtDia(S.dia)}${S.cad?.obra ? " · " + S.cad.obra : ""}`, `Previsto ${tot.prev} · Presente ${tot.ok} · Falta ${tot.falta}`, ""];
-    for (const g of lista) if (g.prev || g.ok) linhas.push(`${g.nome}: ${g.ok}/${g.prev}` + (g.falta ? ` (${g.falta} falta${g.falta > 1 ? "s" : ""})` : ""));
+    for (const g of lista) if (g.nome === VISIT) { if (g.extra) linhas.push(`Visitantes: ${g.extra}`); } else if (g.prev || g.ok) linhas.push(`${g.nome}: ${g.ok}/${g.prev}` + (g.falta ? ` (${g.falta} falta${g.falta > 1 ? "s" : ""})` : ""));
     return linhas.join("\n");
   }
   async function copiar(b) {
@@ -585,7 +586,7 @@ textarea.copy { width: 100%; min-height: 160px; font-family: var(--font-num); fo
       aoa.push(["", "", "Efetivo " + g.nome, g.prev, g.ok + g.extra]);
       aoa.push([]);
     }
-    const quadro = [["Fornecedor", "Previsto", "Presente", "Falta"], ...lista.filter((g) => g.pessoas.length).map((g) => [g.nome, g.prev, g.ok, g.falta]), ["TOTAL GERAL", tot.prev, tot.ok, tot.falta]];
+    const quadro = [["Fornecedor", "Previsto", "Presente", "Falta"], ...lista.filter((g) => g.pessoas.length).map((g) => g.nome === VISIT ? ["VISITANTES", "", g.extra, ""] : [g.nome, g.prev, g.ok, g.falta]), ["TOTAL GERAL", tot.prev, tot.ok, tot.falta]];
     quadro.forEach((r, i) => { const row = aoa[i + 2] || (aoa[i + 2] = []); while (row.length < 6) row.push(""); row.push(...r); });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!cols"] = [{ wch: 5 }, { wch: 38 }, { wch: 28 }, { wch: 9 }, { wch: 11 }, { wch: 3 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 9 }];
