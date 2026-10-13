@@ -2271,8 +2271,8 @@ ${eap.txt}`;
       conf: (x) => sug.has(x.c.id),
       sem: (x) => x.sit === "sem" && !x.j && !sug.has(x.c.id) && x.c.valor > 0,
       notas: nfRuim,
-      dev: (x) => x.sit === "enc" && x.ajuste > tol(x),
-      add: (x) => x.sit === "enc" ? x.ajuste < -tol(x) : x.c.lanc > 0 && estouro(x) > 0 && !cabeOrc(x),
+      dev: (x) => x.c.lancBruto > 0 && x.sit === "enc" && x.ajuste > tol(x),   // ainda não lançada: o caso é "falta lançar"
+      add: (x) => x.c.lancBruto > 0 && (x.sit === "enc" ? x.ajuste < -tol(x) : estouro(x) > 0 && !cabeOrc(x)),
       and: (x) => x.sit === "and",
       ok: (x) => x.sit === "enc" && Math.abs(x.ajuste) <= tol(x),
       aguarda: (x) => x.c.valor == null,
